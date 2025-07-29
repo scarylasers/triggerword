@@ -58,32 +58,24 @@ def fastapi_app():
                 buffer += chunk
 
                 if len(buffer) >= 64000:
-                    async with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_webm:
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_webm:
                         webm_path = temp_webm.name
-                    async with aiofiles.open(webm_path, "wb") as f:
-                        await f.write(buffer)
+                        temp_webm.write(buffer)
 
                     wav_path = webm_path.replace(".webm", ".wav")
 
-                    try:
-                        result = subprocess.run([
-                            "ffmpeg", "-y",
-                            "-i", webm_path,
-                            "-ar", "16000",
-                            "-ac", "1",
-                            "-f", "wav",
-                            wav_path
-                        ], capture_output=True, text=True)
+                    result = subprocess.run([
+                        "ffmpeg", "-y",
+                        "-i", webm_path,
+                        "-ar", "16000",
+                        "-ac", "1",
+                        "-f", "wav",
+                        wav_path
+                    ], capture_output=True, text=True)
 
-                        if result.returncode != 0:
-                            print(f"❌ ffmpeg stderr:\n{result.stderr}")
-                            await websocket.send_text("error: audio conversion failed")
-                            buffer = b""
-                            continue
-
-                    except Exception as e:
-                        print(f"❌ ffmpeg crash: {e}")
-                        await websocket.send_text("error: ffmpeg crashed")
+                    if result.returncode != 0:
+                        print(f"❌ ffmpeg stderr:\n{result.stderr}")
+                        await websocket.send_text("error: audio conversion failed")
                         buffer = b""
                         continue
 
@@ -106,8 +98,7 @@ def fastapi_app():
                     finally:
                         os.remove(webm_path)
                         os.remove(wav_path)
-
-                    buffer = b""
+                        buffer = b""
 
             except Exception as e:
                 print(f"❌ WebSocket error: {e}")

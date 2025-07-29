@@ -47,58 +47,78 @@
     navigator.mediaDevices.getUserMedia({ audio: true }).then(populateMicList);
 
     startBtn.onclick = async () => {
-      startBtn.disabled = true;
-      stopBtn.disabled = false;
-      output.innerText = "🎧 Listening...";
+      try {
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        output.innerText = "🎧 Listening...";
 
-      const selectedMicId = micSelect.value;
-      audioStream = await navigator.mediaDevices.getUserMedia({
-        audio: { deviceId: selectedMicId ? { exact: selectedMicId } : undefined }
-      });
+        const selectedMicId = micSelect.value;
+        audioStream = await navigator.mediaDevices.getUserMedia({
+          audio: { deviceId: selectedMicId ? { exact: selectedMicId } : undefined }
+        });
 
-      // Setup Web Audio API for mic level meter
-      audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      micSource = audioContext.createMediaStreamSource(audioStream);
-      analyser = audioContext.createAnalyser();
-      analyser.fftSize = 256;
-      micSource.connect(analyser);
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        await audioContext.resume();
 
-      function drawMeter() {
-        const bufferLength = analyser.frequencyBinCount;
-        const dataArray = new Uint8Array(bufferLength);
-        analyser.getByteFrequencyData(dataArray);
-        const avg = dataArray.reduce((a, b) => a + b, 0) / bufferLength;
+        micSource = audioContext.createMediaStreamSource(audioStream);
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        micSource.connect(analyser);
 
-        canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
-        canvasCtx.fillStyle = "limegreen";
-        canvasCtx.fillRect(0, 0, avg * 3, canvas.height);
+        function drawMeter() {
+          const bufferLength = analyser.frequencyBinCount;
+          const dataArray = new Uint8Array(bufferLength);
+          analyser.getByteFrequencyData(dataArray);
+          const avg = dataArray.reduce((a, b) => a + b, 0) / bufferLength;
 
-        animationId = requestAnimationFrame(drawMeter);
-      }
-      drawMeter();
+          canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+          canvasCtx.fillStyle = "limegreen";
+          canvasCtx.fillRect(0, 0, avg * 3, canvas.height);
 
-      mediaRecorder = new MediaRecorder(audioStream, { mimeType: "audio/webm" });
-      socket = new WebSocket("wss://scarylasers--triggerword-whisper-fastapi-app.modal.run/ws");
-
-      socket.onmessage = (event) => {
-        const text = event.data;
-        console.log("🔊", text);
-        output.innerText = "🧠 " + text;
-      };
-
-      socket.onerror = (e) => {
-        console.error("❌ WebSocket error:", e);
-        output.innerText = "WebSocket error. Check console.";
-        stopListening();
-      };
-
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0 && socket.readyState === WebSocket.OPEN) {
-          socket.send(e.data);
+          animationId = requestAnimationFrame(drawMeter);
         }
-      };
+        drawMeter();
 
-      mediaRecorder.start(1000);
+        mediaRecorder = new MediaRecorder(audioStream, { mimeType: "audio/webm" });
+
+        socket = new WebSocket("wss://scarylasers--triggerword-whisper-fastapi-app.modal.run/ws");
+
+        socket.onopen = () => {
+          console.log("✅ WebSocket connected");
+        };
+
+        socket.onmessage = (event) => {
+          const text = event.data;
+          console.log("🔊 Transcription:", text);
+          output.innerText = "🧠 " + text;
+        };
+
+        socket.onerror = (e) => {
+          console.error("❌ WebSocket error:", e);
+          output.innerText = "WebSocket error occurred.";
+          stopListening();
+        };
+
+        socket.onclose = (event) => {
+          console.warn("🔌 WebSocket closed:", event);
+          if (!stopBtn.disabled) {
+            output.innerText = "🔌 Connection lost.";
+          }
+        };
+
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0 && socket.readyState === WebSocket.OPEN) {
+            socket.send(e.data);
+          }
+        };
+
+        mediaRecorder.start(1000);
+      } catch (err) {
+        console.error("🚫 Error starting listener:", err);
+        output.innerText = "Failed to start listening.";
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+      }
     };
 
     stopBtn.onclick = () => stopListening();
@@ -116,8 +136,8 @@
         audioContext = null;
       }
       cancelAnimationFrame(animationId);
-
       canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+
       output.innerText = "🛑 Stopped listening.";
       startBtn.disabled = false;
       stopBtn.disabled = true;
