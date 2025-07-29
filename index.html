@@ -104,8 +104,10 @@
         let mediaRecorder;
         let socket = null;
         let isRecording = false;
+        const RECORD_SECONDS = 2; // Length of each audio chunk in seconds
 
         // Open WebSocket only when recording starts
+        // (Best practice: do not call this globally or on page load)
         function connectWebSocket() {
             const wsUrl = 'wss://scarylasers--triggerword-whisper-fastapi-app.modal.run/ws';
             socket = new WebSocket(wsUrl);
