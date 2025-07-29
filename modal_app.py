@@ -1,25 +1,31 @@
 import modal
 from fastapi import FastAPI, WebSocket
 
+# Create the Modal app object
 stub = modal.App(name="triggerword-whisper")
+
+# FastAPI instance
 app = FastAPI()
 
-# Modal container image with all required dependencies
-whisper_image = modal.Image.debian_slim().pip_install(
-    "faster-whisper", "ffmpeg-python", "uvicorn", "aiofiles", "fastapi"
+# Modal container image with required libraries
+whisper_image = (
+    modal.Image.debian_slim()
+    .pip_install("faster-whisper", "ffmpeg-python", "fastapi", "uvicorn", "aiofiles")
 )
 
+# Modal ASGI app that runs with GPU
 @stub.function(
     image=whisper_image,
     gpu="A10G",
     timeout=600,
-    container_idle_timeout=300
+    scaledown_window=300,
 )
 @modal.asgi_app()
 def fastapi_app():
     import tempfile
     from faster_whisper import WhisperModel
 
+    # Load the Whisper model once inside the container
     model = WhisperModel("base", compute_type="float16")
 
     @app.websocket("/ws")
@@ -29,10 +35,10 @@ def fastapi_app():
 
         while True:
             try:
-                chunk = await websocket.receive_bytes()
-                buffer += chunk
+                data = await websocket.receive_bytes()
+                buffer += data
 
-                if len(buffer) > 32000:
+                if len(buffer) > 32000:  # Roughly 1 second of 16-bit audio
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
                         f.write(buffer)
                         temp_path = f.name
@@ -52,7 +58,10 @@ def fastapi_app():
                     buffer = b""
 
             except Exception as e:
-                print("❌ Error:", e)
+                print(f"❌ WebSocket error: {e}")
                 break
 
     return app
+
+# Required to expose the stub for `modal deploy modal_app.stub`
+stub = stub
