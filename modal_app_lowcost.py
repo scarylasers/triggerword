@@ -20,7 +20,7 @@ whisper_image = (
     ])
     .pip_install([
         "numpy<2",
-        "torch==2.2.2",
+        "torch==2.2.2", 
         "torchaudio==2.2.2",
         "openai-whisper",
         "ffmpeg-python",
@@ -68,14 +68,14 @@ def fastapi_app():
         try:
             # Use faster settings for cost efficiency
             result = model.transcribe(audio_path, fp16=True, language="en")
-
+            
             # Extract text from all segments
             full_text = ""
             for segment in result["segments"]:
                 text = segment["text"].strip()
                 if text:
                     full_text += text + " "
-
+            
             return full_text.strip() if full_text.strip() else None
         except Exception as e:
             print(f"❌ Transcription error: {e}")
@@ -85,7 +85,7 @@ def fastapi_app():
     async def transcribe_websocket(websocket: WebSocket):
         await websocket.accept()
         print("🔌 WebSocket connection established")
-
+        
         chunk_buffer = []
         buffer_size = 0
 
@@ -94,7 +94,7 @@ def fastapi_app():
                 # Receive audio chunk from MediaRecorder
                 chunk = await websocket.receive_bytes()
                 print(f"📦 Received audio chunk: {len(chunk)} bytes")
-
+                
                 # Skip very small chunks (likely incomplete)
                 if len(chunk) < 500:  # Lower threshold for smaller files
                     print("⚠️ Skipping small chunk")
@@ -103,81 +103,55 @@ def fastapi_app():
                 # Add chunk to buffer
                 chunk_buffer.append(chunk)
                 buffer_size += len(chunk)
-
+                
                 # Process with smaller buffer for faster response (cost vs latency tradeoff)
                 if len(chunk_buffer) >= 2 or buffer_size >= 80000:  # Smaller buffer for faster processing
                     print(f"🔄 Processing {len(chunk_buffer)} chunks, total size: {buffer_size} bytes")
-
+                    
                     # Combine all chunks into a single file
                     combined_data = b''.join(chunk_buffer)
-
+                    
                     # Reset buffer
                     chunk_buffer = []
                     buffer_size = 0
-
+                    
                     # Try to process with pydub first (more forgiving than ffmpeg)
                     try:
-                        # Save raw data to temp file with proper WebM header check
-                        temp_path = None
+                        # Save raw data to temp file
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_file:
+                            temp_file.write(combined_data)
+                            temp_path = temp_file.name
+                        
+                        print(f"💾 Saved audio data to: {temp_path}")
+                        
+                        # Try to load with pydub (more forgiving than ffmpeg)
                         try:
-                            # Simple check for WebM header (starts with \x1a\x45\xdf\xa3)
-                            if len(combined_data) > 4 and combined_data[0:4] != b'\x1a\x45\xdf\xa3':
-                                print("⚠️ Invalid WebM header detected, attempting to fix...")
-                                # Try to prepend a basic WebM header if missing
-                                webm_header = b'\x1a\x45\xdf\xa3\x01\x00\x00\x00\x00\x00\x00\x1f\x42\x86\x81\x01\x42\x85\x81\x01\x42\x85\x81\x01'
-                                combined_data = webm_header + combined_data
+                            audio = AudioSegment.from_file(temp_path)
+                            print("✅ pydub successfully loaded audio")
                             
-                            with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_file:
-                                temp_file.write(combined_data)
-                                temp_path = temp_file.name
+                            # Convert to low-quality WAV for cost efficiency
+                            wav_path = temp_path.replace(".webm", ".wav")
+                            # Use very low sample rate for speech recognition (saves bandwidth/processing)
+                            audio = audio.set_frame_rate(8000).set_channels(1)  # 8kHz mono is fine for speech
+                            audio.export(wav_path, format="wav")
+                            print(f"✅ Converted to low-quality WAV (8kHz mono): {wav_path}")
                             
-                            print(f"💾 Saved audio data to: {temp_path}")
-
-                            # Try to load with pydub (more forgiving than ffmpeg)
-                            try:
-                                audio = AudioSegment.from_file(temp_path, format="webm")
-                                print("✅ pydub successfully loaded audio")
-
-                                # Convert to low-quality WAV for cost efficiency
-                                wav_path = temp_path.replace(".webm", ".wav")
-                                # Use very low sample rate for speech recognition (saves bandwidth/processing)
-                                audio = audio.set_frame_rate(8000).set_channels(1)  # 8kHz mono is fine for speech
-                                audio.export(wav_path, format="wav")
-                                print(f"✅ Converted to low-quality WAV (8kHz mono): {wav_path}")
-                                
-                            except Exception as pydub_error:
-                                print(f"⚠️ pydub failed: {pydub_error}, trying ffmpeg...")
-                                raise  # Re-raise to be caught by the outer exception handler
-
-                        except Exception as file_error:
-                            print(f"❌ Error processing audio file: {file_error}")
-                            if temp_path and os.path.exists(temp_path):
-                                try:
-                                    os.remove(temp_path)
-                                except:
-                                    pass
-                            await websocket.send_text("error: failed to process audio data")
-                            continue
-
                         except Exception as pydub_error:
                             print(f"⚠️ pydub failed: {pydub_error}, trying ffmpeg...")
-
+                            
                             # Fallback to ffmpeg with low quality settings
                             wav_path = temp_path.replace(".webm", ".wav")
-
+                            
                             # Try multiple ffmpeg approaches with cost-optimized settings
                             ffmpeg_commands = [
-                                # Standard WebM to WAV conversion
-                                ["ffmpeg", "-y", "-v", "quiet", "-i", temp_path, "-c:a", "pcm_s16le", "-ar", "8000", "-ac", "1", "-f", "wav", wav_path],
-                                # Force WebM demuxer with raw audio
-                                ["ffmpeg", "-y", "-v", "quiet", "-f", "webm", "-i", temp_path, "-c:a", "pcm_s16le", "-ar", "8000", "-ac", "1", "-f", "wav", wav_path],
-                                # Try with ignore errors
-                                ["ffmpeg", "-y", "-v", "quiet", "-err_detect", "ignore_err", "-i", temp_path, "-c:a", "pcm_s16le", "-ar", "8000", "-ac", "1", "-f", "wav", wav_path],
+                                # Low quality for cost savings
+                                ["ffmpeg", "-y", "-v", "quiet", "-i", temp_path, "-ar", "8000", "-ac", "1", "-f", "wav", wav_path],
+                                # Force matroska with low quality
+                                ["ffmpeg", "-y", "-v", "quiet", "-f", "matroska", "-i", temp_path, "-ar", "8000", "-ac", "1", "-f", "wav", wav_path],
                                 # Extended analysis with low quality
-                                ["ffmpeg", "-y", "-v", "quiet", "-analyzeduration", "1000000", "-probesize", "1000000",
-                                 "-i", temp_path, "-c:a", "pcm_s16le", "-ar", "8000", "-ac", "1", "-f", "wav", wav_path],
+                                ["ffmpeg", "-y", "-v", "quiet", "-analyzeduration", "1000000", "-probesize", "1000000", "-i", temp_path, "-ar", "8000", "-ac", "1", "-f", "wav", wav_path],
                             ]
-
+                            
                             success = False
                             for cmd in ffmpeg_commands:
                                 result = subprocess.run(cmd, capture_output=True, text=True)
@@ -187,7 +161,7 @@ def fastapi_app():
                                     break
                                 else:
                                     print(f"⚠️ ffmpeg attempt failed: {result.stderr}")
-
+                            
                             if not success:
                                 print("❌ All conversion attempts failed")
                                 await websocket.send_text("error: audio conversion failed")
@@ -200,7 +174,7 @@ def fastapi_app():
                         # Now transcribe using cost-optimized approach
                         print(f"🎯 Transcribing audio file: {wav_path}")
                         transcription = wav_to_text(wav_path)
-
+                        
                         if transcription is not None and transcription.strip():
                             text = transcription.strip().lower()
                             print(f"🧠 Transcribed: '{text}'")
