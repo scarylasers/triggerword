@@ -8,6 +8,7 @@ whisper_image = (
     modal.Image
     .from_registry("nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu20.04", add_python="3.10")
     .pip_install(
+        "torch",  # ✅ Required for faster-whisper
         "faster-whisper",
         "ctranslate2",
         "ffmpeg-python",
@@ -18,12 +19,12 @@ whisper_image = (
     .apt_install("ffmpeg")
 )
 
+
 @stub.function(
     image=whisper_image,
     gpu="A10G",
     timeout=600,
     scaledown_window=300,
-    retries=0,  # avoid restart loops
 )
 @modal.asgi_app()
 def fastapi_app():
