@@ -8,6 +8,7 @@ whisper_image = (
     modal.Image
     .from_registry("nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu20.04", add_python="3.10")
     .pip_install(
+        "torch",  # 👈 add this line
         "faster-whisper",
         "ctranslate2",
         "ffmpeg-python",
