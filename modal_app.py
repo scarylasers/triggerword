@@ -9,33 +9,35 @@ stub = modal.App(name="triggerword-whisper")
 app = FastAPI()
 
 whisper_image = (
-    modal.Image.debian_slim(python_version="3.10")
+    modal.Image.from_registry("nvidia/cuda:12.1-devel-ubuntu22.04", add_python="3.10")
     .apt_install([
         "ffmpeg",
         "libgl1-mesa-glx",
         "libglib2.0-0",
         "libsm6", "libxext6", "libxrender-dev",
-        "curl", "git"
+        "curl", "git", "wget"
     ])
     .pip_install([
         "numpy<2",
-        "torch==2.2.2",
-        "torchaudio==2.2.2",
+        "torch==2.2.2+cu121", 
+        "torchaudio==2.2.2+cu121",
         "ctranslate2",
         "faster-whisper",
         "ffmpeg-python",
         "fastapi",
         "uvicorn",
         "aiofiles",
-    ])
+    ], extra_index_url="https://download.pytorch.org/whl/cu121")
     .env({
         "PYTHONUNBUFFERED": "1",
+        "CUDA_VISIBLE_DEVICES": "0",
     })
 )
 
 
 @stub.function(
     image=whisper_image,
+    gpu="A10G",
     timeout=600,
     scaledown_window=300,
 )
@@ -45,10 +47,10 @@ def fastapi_app():
     import torch
 
     print("🔥 CUDA Available:", torch.cuda.is_available())
-    print("🖥️ Using CPU mode to avoid cuDNN issues")
+    print("🚀 Using GPU acceleration with faster-whisper")
     
-    # Use CPU mode explicitly to avoid cuDNN library issues
-    model = WhisperModel("base", device="cpu", compute_type="int8")
+    # Use GPU with faster-whisper for real-time performance
+    model = WhisperModel("base", device="cuda", compute_type="float16")
 
     @app.websocket("/ws")
     async def transcribe_websocket(websocket: WebSocket):
