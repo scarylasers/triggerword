@@ -31,7 +31,7 @@ whisper_image = (
         "python-jose[cryptography]==3.3.0",
         "python-dotenv==1.0.0"
     )
-    .add_local_dir("/static", "static")  # Ensures static files are included in the Modal image
+    .add_local_dir("/static", local_path="static")  # Ensures static files are included in the Modal image
     .env({
         "PYTHONUNBUFFERED": "1",
         "PYTORCH_ENABLE_MPS_FALLBACK": "1"
