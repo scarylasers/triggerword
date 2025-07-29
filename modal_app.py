@@ -1,44 +1,55 @@
-# modal_app.py
-from modal import Stub, asgi_app, gpu, web_endpoint
+import modal
+import tempfile
 from fastapi import FastAPI, WebSocket
 from faster_whisper import WhisperModel
-import tempfile
-import asyncio
-import wave
-import os
 
-stub = Stub("triggerword-whisper")
 app = FastAPI()
 
-model = WhisperModel("base", compute_type="float16")
+# Load Whisper model once per container
+def load_model():
+    return WhisperModel("base", compute_type="float16")
 
-@app.websocket("/ws")
-async def transcribe_audio(websocket: WebSocket):
-    await websocket.accept()
-    buffer = b""
+whisper_image = modal.Image.debian_slim().pip_install(
+    "faster-whisper", "fastapi", "uvicorn", "ffmpeg-python", "aiofiles"
+)
 
-    while True:
-        try:
-            chunk = await websocket.receive_bytes()
-            buffer += chunk
+stub = modal.App(name="triggerword-whisper")
 
-            if len(buffer) > 32000:  # ~1 sec audio
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
-                    f.write(buffer)
-                    temp_path = f.name
+@stub.function(image=whisper_image, gpu="A10G", timeout=600, container_idle_timeout=300)
+@modal.asgi_app()
+def fastapi_app():
+    model = load_model()
 
-                segments, _ = model.transcribe(temp_path)
-                for segment in segments:
-                    text = segment.text.lower()
-                    print(f"🧠 Heard: {text}")
-                    if "let's go" in text:
-                        await websocket.send_text("trigger:letsgo")
-                    elif "cute" in text:
-                        await websocket.send_text("trigger:cute")
+    @app.websocket("/ws")
+    async def websocket_endpoint(websocket: WebSocket):
+        await websocket.accept()
+        buffer = b""
 
-                buffer = b""
-        except Exception as e:
-            print("WebSocket Error:", e)
-            break
+        while True:
+            try:
+                data = await websocket.receive_bytes()
+                buffer += data
 
-stub.asgi_app(app)
+                if len(buffer) > 32000:  # ~1 second of audio
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
+                        f.write(buffer)
+                        temp_path = f.name
+
+                    segments, _ = model.transcribe(temp_path)
+                    for segment in segments:
+                        text = segment.text.lower()
+                        print("🧠 Heard:", text)
+                        if "let's go" in text:
+                            await websocket.send_text("trigger:letsgo")
+                        elif "cute" in text:
+                            await websocket.send_text("trigger:cute")
+                        else:
+                            await websocket.send_text(text)
+
+                    buffer = b""
+
+            except Exception as e:
+                print("❌ WebSocket Error:", e)
+                break
+
+    return app
