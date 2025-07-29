@@ -12,17 +12,8 @@ from typing import Optional
 import uvicorn
 
 stub = modal.App(name="triggerword-whisper")
-app = FastAPI()
+# NOTE: Do NOT create a global app or mount static here. All FastAPI setup must be inside fastapi_app() for Modal deployment.
 
-# Mount static files directory
-app.mount("/static", StaticFiles(directory="/root/static"), name="static")  # Use /root/static for Modal deployment
-
-# Initialize templates
-try:
-    templates = Jinja2Templates(directory="templates")
-except:
-    os.makedirs("templates", exist_ok=True)
-    templates = Jinja2Templates(directory="templates")
 
 whisper_image = (
     modal.Image.debian_slim(python_version="3.10")
@@ -57,45 +48,98 @@ whisper_image = (
 )
 @modal.asgi_app()
 def fastapi_app():
+    from fastapi import FastAPI, WebSocket, Request
+    from fastapi.staticfiles import StaticFiles
+    from fastapi.responses import HTMLResponse, FileResponse
     import whisper
     import torch
-    from pydub import AudioSegment
-    import wave
-    import contextlib
-    import json
+    import tempfile
+    import subprocess
+    import os
 
-    print("🔥 CUDA Available:", torch.cuda.is_available())
+    app = FastAPI()
+    # Mount static files from the correct location in the Modal container
+    app.mount("/static", StaticFiles(directory="/root/static"), name="static")
 
-    # Use smaller model for cost efficiency
-    try:
-        if torch.cuda.is_available():
-            print("🚀 Loading Whisper TINY model on GPU for cost efficiency")
-            model = whisper.load_model("tiny", device="cuda")  # Tiny model is much faster/cheaper
-        else:
-            print("🖥️ Loading Whisper TINY model on CPU")
-            model = whisper.load_model("tiny", device="cpu")
-        print("✅ Whisper model loaded successfully")
-    except Exception as e:
-        print(f"⚠️ GPU failed, falling back to CPU: {e}")
-        model = whisper.load_model("tiny", device="cpu")
-        print("✅ CPU model loaded successfully")
+    # Serve main page
+    @app.get("/")
+    async def serve_index():
+        return FileResponse("/root/static/index.html")
 
-    def wav_to_text(audio_path):
-        """Process audio file with Whisper - optimized for cost"""
+    # WebSocket endpoint for audio processing
+    @app.websocket("/ws")
+    async def websocket_endpoint(websocket: WebSocket):
+        await websocket.accept()
+        print("🔌 WebSocket connection established")
         try:
-            # Use faster settings for cost efficiency
-            result = model.transcribe(audio_path, fp16=True, language="en")
-
-            # Extract text from all segments
-            full_text = ""
-            for segment in result["segments"]:
-                text = segment["text"].strip()
-                if text:
-                    full_text += text + " "
-
-            return full_text.strip() if full_text.strip() else None
+            # Load Whisper model (on GPU if available)
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            print(f"🔊 Loading Whisper model on {device.upper()}...")
+            model = whisper.load_model("tiny", device=device)
+            print("✅ Whisper model loaded successfully")
+            while True:
+                # Receive MP3 data from frontend
+                mp3_data = await websocket.receive_bytes()
+                print(f"📦 Received audio chunk: {len(mp3_data)} bytes")
+                # Create temporary files
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as mp3_file, \
+                     tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as wav_file:
+                    mp3_path = mp3_file.name
+                    wav_path = wav_file.name
+                    try:
+                        mp3_file.write(mp3_data)
+                        mp3_file.flush()
+                        # Convert MP3 to WAV using ffmpeg
+                        cmd = [
+                            "ffmpeg", "-y", "-i", mp3_path,
+                            "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
+                            "-loglevel", "error", wav_path
+                        ]
+                        result = subprocess.run(cmd, capture_output=True, text=True)
+                        if result.returncode != 0:
+                            print(f"❌ FFmpeg error: {result.stderr}")
+                            await websocket.send_text("error: audio conversion failed")
+                            continue
+                        print(f"✅ Converted to WAV: {wav_path}")
+                        # Transcribe audio using Whisper
+                        audio = whisper.load_audio(wav_path)
+                        audio = whisper.pad_or_trim(audio)
+                        mel = whisper.log_mel_spectrogram(audio).to(model.device)
+                        _, probs = model.detect_language(mel)
+                        language = max(probs, key=probs.get)
+                        print(f"Detected language: {language}")
+                        options = whisper.DecodingOptions(fp16=torch.cuda.is_available())
+                        result = whisper.decode(model, mel, options)
+                        transcription = result.text.strip() if result.text else ""
+                        if transcription:
+                            print(f"🎤 Transcribed: {transcription}")
+                            text = transcription.lower()
+                            if any(phrase in text for phrase in ["let's go", "lets go", "let go"]):
+                                await websocket.send_text("trigger:letsgo")
+                                print("🎯 Trigger detected: let's go")
+                            elif "cute" in text:
+                                await websocket.send_text("trigger:cute")
+                                print("🎯 Trigger detected: cute")
+                            else:
+                                await websocket.send_text(transcription)
+                        else:
+                            print("🔇 No speech detected")
+                            await websocket.send_text("")
+                    except Exception as e:
+                        print(f"❌ Error processing audio: {e}")
+                        await websocket.send_text("error: audio processing failed")
+                    finally:
+                        for path in [mp3_path, wav_path]:
+                            try:
+                                if os.path.exists(path):
+                                    os.remove(path)
+                            except Exception as e:
+                                print(f"⚠️ Error removing {path}: {e}")
         except Exception as e:
-            print(f"❌ Transcription error: {e}")
+            print(f"❌ WebSocket error: {e}")
+        print("🔌 WebSocket connection closed")
+
+    return app
             return None
 
     def wav_to_text(self, audio_path: str) -> Optional[str]:
