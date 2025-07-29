@@ -108,11 +108,22 @@
 
         mediaRecorder.ondataavailable = (e) => {
           if (e.data.size > 0 && socket.readyState === WebSocket.OPEN) {
+            console.log(`📦 Sending audio chunk: ${e.data.size} bytes`);
             socket.send(e.data);
           }
         };
 
-        mediaRecorder.start(1000);
+        mediaRecorder.onstop = () => {
+          console.log("🛑 MediaRecorder stopped");
+        };
+
+        mediaRecorder.onerror = (e) => {
+          console.error("❌ MediaRecorder error:", e);
+          output.innerText = "Recording error occurred.";
+        };
+
+        // Record in 3-second chunks to get complete WebM segments
+        mediaRecorder.start(3000);
       } catch (err) {
         console.error("🚫 Error starting listener:", err);
         output.innerText = "Failed to start listening.";
