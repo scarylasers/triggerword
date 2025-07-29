@@ -97,9 +97,29 @@ def fastapi_app():
                 f.write(pcm_bytes)
 
         import binascii
+        import asyncio
+        import json
+        SILENCE_TIMEOUT = 600  # 10 minutes
+        last_data_time = asyncio.get_event_loop().time()
+
+        # Wait for config message from frontend (must be JSON with triggers)
+        config_msg = await websocket.receive_text()
+        try:
+            config_data = json.loads(config_msg)
+            if config_data.get('type') == 'config' and 'triggers' in config_data:
+                session_triggers = [t['word'].lower() for t in config_data['triggers'] if 'word' in t]
+                print(f"🔔 Triggers for this session: {session_triggers}")
+            else:
+                session_triggers = []
+        except Exception as e:
+            print(f"❌ Failed to parse config message: {e}")
+            session_triggers = []
+
         while True:
             try:
-                chunk = await websocket.receive_bytes()
+                # Wait for audio chunk or timeout
+                chunk = await asyncio.wait_for(websocket.receive_bytes(), timeout=SILENCE_TIMEOUT)
+
                 print("\n==============================")
                 print(f"📦 Received chunk: {len(chunk)} bytes")
                 print(f"🔎 First 16 bytes: {binascii.hexlify(chunk[:16])}")
@@ -117,81 +137,54 @@ def fastapi_app():
                             print(f"🎧 WAV first 16 bytes: {binascii.hexlify(wav_head)}")
                         print(f"💾 Saved final WAV chunk to: {wav_path}")
                         try:
-                            result = model.transcribe(wav_path)
-                            transcription_found = False
-                            for segment in result["segments"]:
-                                text = segment["text"].strip().lower()
-                                if text:
-                                    transcription_found = True
-                                    print(f"🧠 Transcribed: '{text}'")
-                                    if "let's go" in text:
-                                        await websocket.send_text("trigger:letsgo")
-                                    elif "cute" in text:
-                                        await websocket.send_text("trigger:cute")
-                                    else:
-                                        await websocket.send_text(text)
-                            if not transcription_found:
-                                print("🔇 No speech detected in final PCM chunk")
+                            result = model.transcribe(wav_path, language='en')
+                            transcript = result["text"].strip()
+                            print(f"📝 Final Transcript: {transcript}")
+                            await websocket.send_text(transcript)
+                            # Check for triggers in transcript
+                            if session_triggers:
+                                for trig in session_triggers:
+                                    if trig in transcript.lower():
+                                        await websocket.send_text(f"trigger:{trig}")
                         except Exception as e:
-                            print(f"❌ Transcription failed: {e}")
-                            await websocket.send_text("error: transcription failed")
-                        try:
-                            os.remove(wav_path)
-                        except Exception as e:
-                            print(f"⚠️ Failed to clean up WAV: {e}")
+                            print(f"❌ Whisper error: {e}")
                     break
 
-                if len(chunk) < 100:
-                    print("⚠️ Skipping small chunk")
-                    continue
+                # Buffer PCM audio
                 pcm_buffer.extend(chunk)
-                print(f"🔢 Buffer size: {len(pcm_buffer)} bytes")
-
-                # When buffer reaches chunk size (e.g., 2 seconds), process
-                while len(pcm_buffer) >= PCM_CHUNK_SIZE:
-                    process_bytes = pcm_buffer[:PCM_CHUNK_SIZE]
-                    pcm_buffer = pcm_buffer[PCM_CHUNK_SIZE:]
-                    print(f"🛠️ Processing {len(process_bytes)} bytes as WAV")
+                if len(pcm_buffer) >= PCM_CHUNK_SIZE:
+                    # Write buffered PCM to WAV
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_wav:
                         wav_path = temp_wav.name
-                        write_wav(wav_path, process_bytes, sample_rate=PCM_SAMPLE_RATE, num_channels=PCM_CHANNELS)
-                    # Show first few bytes of WAV file
+                        write_wav(wav_path, pcm_buffer, sample_rate=PCM_SAMPLE_RATE, num_channels=PCM_CHANNELS)
                     with open(wav_path, 'rb') as f:
                         wav_head = f.read(16)
                         print(f"🎧 WAV first 16 bytes: {binascii.hexlify(wav_head)}")
                     print(f"💾 Saved WAV chunk to: {wav_path}")
-                    # Transcribe the audio
                     try:
-                        result = model.transcribe(wav_path)
-                        transcription_found = False
-                        for segment in result["segments"]:
-                            text = segment["text"].strip().lower()
-                            if text:
-                                transcription_found = True
-                                print(f"🧠 Transcribed: '{text}'")
-                                # Check for trigger words
-                                if "let's go" in text:
-                                    await websocket.send_text("trigger:letsgo")
-                                elif "cute" in text:
-                                    await websocket.send_text("trigger:cute")
-                                else:
-                                    await websocket.send_text(text)
-                        if not transcription_found:
-                            print("🔇 No speech detected in PCM chunk")
+                        result = model.transcribe(wav_path, language='en')
+                        transcript = result["text"].strip()
+                        print(f"📝 Transcript: {transcript}")
+                        await websocket.send_text(transcript)
+                        # Check for triggers in transcript
+                        if session_triggers:
+                            for trig in session_triggers:
+                                if trig in transcript.lower():
+                                    await websocket.send_text(f"trigger:{trig}")
                     except Exception as e:
-                        print(f"❌ Transcription failed: {e}")
-                        await websocket.send_text("error: transcription failed")
-                    # Clean up temp WAV
-                    try:
-                        os.remove(wav_path)
-                    except Exception as e:
-                        print(f"⚠️ Failed to clean up WAV: {e}")
+                        print(f"❌ Whisper error: {e}")
+                    pcm_buffer = bytearray()
+
+            except asyncio.TimeoutError:
+                print("No audio received for 10 minutes. Closing connection.")
+                await websocket.close()
+                break
             except Exception as e:
                 print(f"❌ WebSocket error: {e}")
                 try:
-                    await websocket.send_text(f"error: {str(e)}")
-                except:
-                    break
+                    await websocket.close()
+                except Exception:
+                    pass
                 break
 
     return app

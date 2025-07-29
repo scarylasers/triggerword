@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Audio Recorder with Trigger Words</title>
+    <title>TriggerWord</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -82,10 +82,23 @@
     <h1>Audio Recorder with Trigger Words</h1>
     
     <div class="controls">
-        <button id="startBtn">Start Recording</button>
-        <button id="stopBtn" disabled>Stop Recording</button>
+        <button id="startBtn">Listen for triggers</button>
+        <button id="stopBtn" disabled>Stop listening</button>
     </div>
-    
+
+    <!-- Trigger setup UI -->
+    <div id="trigger-setup">
+        <h3>Trigger Words & Sounds</h3>
+        <form id="triggerForm">
+            <input type="text" id="triggerWord" placeholder="Trigger word/phrase" required>
+            <input type="file" id="triggerSound" accept="audio/*">
+            <button type="submit">Add Trigger</button>
+        </form>
+        <ul id="triggerList"></ul>
+        <button id="saveTriggers">Save Setup</button>
+        <button id="loadTriggers">Load Setup</button>
+    </div>
+
     <div id="status">Status: Ready</div>
     
     <div>
@@ -104,7 +117,12 @@
         let mediaRecorder;
         let socket = null;
         let isRecording = false;
-        const RECORD_SECONDS = 2; // Length of each audio chunk in seconds
+        let isPlayingSample = false; // Mute listener when playing sample
+        const RECORD_SECONDS = 3; // Length of each audio chunk in seconds (increased for accuracy)
+
+        // Trigger setup state
+        let triggers = [];
+        let triggerAudioElements = {}; // Map trigger word to audio element for playback
 
         // Open WebSocket only when recording starts
         // (Best practice: do not call this globally or on page load)
@@ -115,12 +133,18 @@
             socket.onopen = () => {
                 console.log('WebSocket connected');
                 updateStatus('Connected to server', 'info');
+                // Send triggers config as first message
+                const configMsg = {
+                    type: "config",
+                    triggers: triggers.map(t => ({word: t.word, sound: t.soundName}))
+                };
+                socket.send(JSON.stringify(configMsg));
             };
 
             socket.onmessage = (event) => {
                 const message = event.data;
                 console.log('Message from server:', message);
-                
+                // Handle trigger message from backend
                 if (message.startsWith('trigger:')) {
                     const triggerType = message.split(':')[1];
                     handleTrigger(triggerType);
@@ -180,28 +204,26 @@
             transcriptDiv.scrollTop = 0;
         }
         
-        // Handle trigger words
+        // Handle trigger words (play sound, mute listener)
         function handleTrigger(triggerType) {
             let message = '';
-            
-            switch(triggerType) {
-                case 'letsgo':
-                    message = '🚀 Action triggered: Let\'s go!';
-                    break;
-                case 'cute':
-                    message = '🐶 Action triggered: That\'s cute!';
-                    break;
-                default:
-                    message = `🔔 Unknown trigger: ${triggerType}`;
+            let found = triggers.find(t => t.word === triggerType);
+            if (found && triggerAudioElements[triggerType]) {
+                isPlayingSample = true;
+                triggerAudioElements[triggerType].play();
+                triggerAudioElements[triggerType].onended = () => {
+                    isPlayingSample = false;
+                };
+                message = `🔔 Triggered: ${triggerType}`;
+            } else {
+                message = `🔔 Unknown trigger: ${triggerType}`;
             }
-            
             // Add trigger message to transcript
             const triggerNode = document.createElement('div');
             triggerNode.className = 'trigger';
             triggerNode.textContent = message;
             transcriptDiv.insertBefore(triggerNode, transcriptDiv.firstChild);
             transcriptDiv.insertBefore(document.createElement('br'), transcriptDiv.firstChild);
-            
             // Also show in status
             updateStatus(message, 'success');
         }
@@ -237,7 +259,7 @@
         }
 
         function processAudio(e) {
-            if (!isRecording) return;
+            if (!isRecording || isPlayingSample) return; // Mute listener when sample is playing
             const inputData = e.inputBuffer.getChannelData(0);
             // Silence detection: calculate RMS (root mean square)
             let sumSquares = 0;
@@ -245,8 +267,8 @@
                 sumSquares += inputData[i] * inputData[i];
             }
             const rms = Math.sqrt(sumSquares / inputData.length);
-            // Only buffer if above threshold (0.01) to save compute and improve UX
-            if (rms > 0.01) {
+            // Only buffer if above threshold (0.005) to save compute and improve UX, but less aggressive
+            if (rms > 0.005) {
                 let pcm = new Int16Array(inputData.length);
                 for (let i = 0; i < inputData.length; i++) {
                     let s = Math.max(-1, Math.min(1, inputData[i]));
@@ -303,6 +325,64 @@
                 socket = null;
             }
         }
+
+        // Trigger form logic
+        const triggerForm = document.getElementById('triggerForm');
+        const triggerWordInput = document.getElementById('triggerWord');
+        const triggerSoundInput = document.getElementById('triggerSound');
+        const triggerList = document.getElementById('triggerList');
+        const saveTriggersBtn = document.getElementById('saveTriggers');
+        const loadTriggersBtn = document.getElementById('loadTriggers');
+
+        function renderTriggerList() {
+            triggerList.innerHTML = '';
+            triggers.forEach((t, idx) => {
+                const li = document.createElement('li');
+                li.textContent = `${t.word} (${t.soundName || 'No sound'})`;
+                const delBtn = document.createElement('button');
+                delBtn.textContent = 'Remove';
+                delBtn.onclick = () => {
+                    triggers.splice(idx, 1);
+                    delete triggerAudioElements[t.word];
+                    renderTriggerList();
+                };
+                li.appendChild(delBtn);
+                triggerList.appendChild(li);
+            });
+        }
+
+        triggerForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const word = triggerWordInput.value.trim();
+            const file = triggerSoundInput.files[0];
+            if (!word) return;
+            let soundName = '';
+            if (file) {
+                soundName = file.name;
+                const url = URL.createObjectURL(file);
+                const audio = new Audio(url);
+                triggerAudioElements[word] = audio;
+            } else {
+                triggerAudioElements[word] = null;
+            }
+            triggers.push({word, soundName});
+            renderTriggerList();
+            triggerForm.reset();
+        });
+
+        saveTriggersBtn.addEventListener('click', () => {
+            localStorage.setItem('triggers', JSON.stringify(triggers));
+            updateStatus('Trigger setup saved!', 'success');
+        });
+        loadTriggersBtn.addEventListener('click', () => {
+            const saved = localStorage.getItem('triggers');
+            if (saved) {
+                triggers = JSON.parse(saved);
+                renderTriggerList();
+                updateStatus('Trigger setup loaded!', 'success');
+            }
+        });
+        renderTriggerList();
 
         // Event listeners
         startBtn.addEventListener('click', startRecording);
