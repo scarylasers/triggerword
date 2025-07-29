@@ -96,23 +96,69 @@ def fastapi_app():
                 f.write(struct.pack('<I', datasize))
                 f.write(pcm_bytes)
 
+        import binascii
         while True:
             try:
                 chunk = await websocket.receive_bytes()
-                print(f"📦 Received PCM chunk: {len(chunk)} bytes")
+                print("\n==============================")
+                print(f"📦 Received chunk: {len(chunk)} bytes")
+                print(f"🔎 First 16 bytes: {binascii.hexlify(chunk[:16])}")
+
+                # If stop signal received, flush buffer and break for cost savings
+                if chunk == b'__STOP__':
+                    print("🛑 Received STOP signal from client. Flushing remaining buffer and closing connection to save compute.")
+                    if len(pcm_buffer) > 0:
+                        print(f"🛠️ Flushing {len(pcm_buffer)} bytes as final WAV chunk")
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_wav:
+                            wav_path = temp_wav.name
+                            write_wav(wav_path, pcm_buffer, sample_rate=PCM_SAMPLE_RATE, num_channels=PCM_CHANNELS)
+                        with open(wav_path, 'rb') as f:
+                            wav_head = f.read(16)
+                            print(f"🎧 WAV first 16 bytes: {binascii.hexlify(wav_head)}")
+                        print(f"💾 Saved final WAV chunk to: {wav_path}")
+                        try:
+                            result = model.transcribe(wav_path)
+                            transcription_found = False
+                            for segment in result["segments"]:
+                                text = segment["text"].strip().lower()
+                                if text:
+                                    transcription_found = True
+                                    print(f"🧠 Transcribed: '{text}'")
+                                    if "let's go" in text:
+                                        await websocket.send_text("trigger:letsgo")
+                                    elif "cute" in text:
+                                        await websocket.send_text("trigger:cute")
+                                    else:
+                                        await websocket.send_text(text)
+                            if not transcription_found:
+                                print("🔇 No speech detected in final PCM chunk")
+                        except Exception as e:
+                            print(f"❌ Transcription failed: {e}")
+                            await websocket.send_text("error: transcription failed")
+                        try:
+                            os.remove(wav_path)
+                        except Exception as e:
+                            print(f"⚠️ Failed to clean up WAV: {e}")
+                    break
 
                 if len(chunk) < 100:
-                    print("⚠️ Skipping small PCM chunk")
+                    print("⚠️ Skipping small chunk")
                     continue
                 pcm_buffer.extend(chunk)
+                print(f"🔢 Buffer size: {len(pcm_buffer)} bytes")
 
                 # When buffer reaches chunk size (e.g., 2 seconds), process
                 while len(pcm_buffer) >= PCM_CHUNK_SIZE:
                     process_bytes = pcm_buffer[:PCM_CHUNK_SIZE]
                     pcm_buffer = pcm_buffer[PCM_CHUNK_SIZE:]
+                    print(f"🛠️ Processing {len(process_bytes)} bytes as WAV")
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_wav:
                         wav_path = temp_wav.name
                         write_wav(wav_path, process_bytes, sample_rate=PCM_SAMPLE_RATE, num_channels=PCM_CHANNELS)
+                    # Show first few bytes of WAV file
+                    with open(wav_path, 'rb') as f:
+                        wav_head = f.read(16)
+                        print(f"🎧 WAV first 16 bytes: {binascii.hexlify(wav_head)}")
                     print(f"💾 Saved WAV chunk to: {wav_path}")
                     # Transcribe the audio
                     try:

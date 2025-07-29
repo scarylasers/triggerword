@@ -1,168 +1,314 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>TriggerWord Listener</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Recorder with Trigger Words</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .controls {
+            margin: 20px 0;
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 12px 24px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 10px 5px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        #stopBtn {
+            background-color: #f44336;
+        }
+        #stopBtn:hover {
+            background-color: #d32f2f;
+        }
+        #status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 4px;
+            min-height: 24px;
+        }
+        .recording {
+            background-color: #ffebee;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
+        #transcript {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            min-height: 100px;
+            text-align: left;
+            background-color: white;
+            white-space: pre-wrap;
+        }
+        .trigger {
+            color: #e91e63;
+            font-weight: bold;
+        }
+    </style>
 </head>
 <body>
-  <h1>🎤 TriggerWord Listening Test</h1>
+    <h1>Audio Recorder with Trigger Words</h1>
+    
+    <div class="controls">
+        <button id="startBtn">Start Recording</button>
+        <button id="stopBtn" disabled>Stop Recording</button>
+    </div>
+    
+    <div id="status">Status: Ready</div>
+    
+    <div>
+        <h3>Transcript:</h3>
+        <div id="transcript">Speak to see the transcription here...</div>
+    </div>
 
-  <label for="mic-select">Select Microphone:</label>
-  <select id="mic-select"></select>
-  <br><br>
-
-  <button id="start">Start Listening</button>
-  <button id="stop" disabled>Stop Listening</button>
-
-  <div id="output"></div>
-  <canvas id="mic-meter" width="300" height="30" style="border: 1px solid #ccc; margin-top: 10px;"></canvas>
-
-  <script>
-    let socket;
-    let mediaRecorder;
-    let audioStream;
-    let audioContext, analyser, micSource, animationId;
-
-    const micSelect = document.getElementById("mic-select");
-    const startBtn = document.getElementById("start");
-    const stopBtn = document.getElementById("stop");
-    const output = document.getElementById("output");
-    const canvas = document.getElementById("mic-meter");
-    const canvasCtx = canvas.getContext("2d");
-
-    // Get available audio input devices
-    async function populateMicList() {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const mics = devices.filter(device => device.kind === "audioinput");
-
-      micSelect.innerHTML = "";
-      mics.forEach((mic, index) => {
-        const option = document.createElement("option");
-        option.value = mic.deviceId;
-        option.text = mic.label || `Microphone ${index + 1}`;
-        micSelect.appendChild(option);
-      });
-    }
-
-    // Ask for mic permissions early so labels show up
-    navigator.mediaDevices.getUserMedia({ audio: true }).then(populateMicList);
-
-    startBtn.onclick = async () => {
-      try {
-        startBtn.disabled = true;
-        stopBtn.disabled = false;
-        output.innerText = "🎧 Listening...";
-
-        const selectedMicId = micSelect.value;
-        audioStream = await navigator.mediaDevices.getUserMedia({
-          audio: { deviceId: selectedMicId ? { exact: selectedMicId } : undefined }
-        });
-
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        await audioContext.resume();
-
-        micSource = audioContext.createMediaStreamSource(audioStream);
-        analyser = audioContext.createAnalyser();
-        analyser.fftSize = 256;
-        micSource.connect(analyser);
-
-        function drawMeter() {
-          const bufferLength = analyser.frequencyBinCount;
-          const dataArray = new Uint8Array(bufferLength);
-          analyser.getByteFrequencyData(dataArray);
-          const avg = dataArray.reduce((a, b) => a + b, 0) / bufferLength;
-
-          canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
-          canvasCtx.fillStyle = "limegreen";
-          canvasCtx.fillRect(0, 0, avg * 3, canvas.height);
-
-          animationId = requestAnimationFrame(drawMeter);
-        }
-        drawMeter();
-
-        // Try WAV first, fallback to WebM if not supported
-        let mimeType = "audio/wav";
-        if (!MediaRecorder.isTypeSupported(mimeType)) {
-          mimeType = "audio/webm;codecs=opus";
-          if (!MediaRecorder.isTypeSupported(mimeType)) {
-            mimeType = "audio/webm";
-          }
+    <script>
+        // DOM Elements
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const statusDiv = document.getElementById('status');
+        const transcriptDiv = document.getElementById('transcript');
+        
+        // Audio recording variables
+        let mediaRecorder;
+        let socket;
+        let isRecording = false;
+        
+        // WebSocket connection
+        function connectWebSocket() {
+            const wsUrl = 'wss://scarylasers--triggerword-whisper-fastapi-app.modal.run/ws';
+            
+            socket = new WebSocket(wsUrl);
+            
+            socket.onopen = () => {
+                console.log('WebSocket connected');
+                updateStatus('Connected to server', 'info');
+            };
+            
+            socket.onmessage = (event) => {
+                const message = event.data;
+                console.log('Message from server:', message);
+                
+                if (message.startsWith('trigger:')) {
+                    const triggerType = message.split(':')[1];
+                    handleTrigger(triggerType);
+                } else if (message.startsWith('error:')) {
+                    updateStatus('Error: ' + message.substring(6), 'error');
+                } else {
+                    updateTranscript(message);
+                }
+            };
+            
+            socket.onclose = () => {
+                console.log('WebSocket disconnected');
+                updateStatus('Disconnected from server', 'warning');
+                
+                // Try to reconnect after 3 seconds
+                setTimeout(connectWebSocket, 3000);
+            };
+            
+            socket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                updateStatus('Connection error', 'error');
+            };
         }
         
-        console.log(`🎵 Using MIME type: ${mimeType}`);
-        mediaRecorder = new MediaRecorder(audioStream, { mimeType: mimeType });
+        // Initialize WebSocket connection when the page loads
+        connectWebSocket();
+        
+        // Update status display
+        function updateStatus(message, type = 'info') {
+            const statusText = `Status: ${message}`;
+            statusDiv.textContent = statusText;
+            
+            // Clear previous classes
+            statusDiv.className = '';
+            
+            // Add appropriate class based on message type
+            if (type === 'error') {
+                statusDiv.style.color = '#d32f2f';
+            } else if (type === 'success') {
+                statusDiv.style.color = '#388e3c';
+            } else if (type === 'warning') {
+                statusDiv.style.color = '#f57c00';
+            } else {
+                statusDiv.style.color = '#1976d2';
+            }
+        }
+        
+        // Update transcript display
+        function updateTranscript(text) {
+            if (!text.trim()) return;
+            
+            // Add new text to the transcript
+            const textNode = document.createTextNode(text + '\n');
+            transcriptDiv.insertBefore(textNode, transcriptDiv.firstChild);
+            
+            // Scroll to the top to show the latest text
+            transcriptDiv.scrollTop = 0;
+        }
+        
+        // Handle trigger words
+        function handleTrigger(triggerType) {
+            let message = '';
+            
+            switch(triggerType) {
+                case 'letsgo':
+                    message = '🚀 Action triggered: Let\'s go!';
+                    break;
+                case 'cute':
+                    message = '🐶 Action triggered: That\'s cute!';
+                    break;
+                default:
+                    message = `🔔 Unknown trigger: ${triggerType}`;
+            }
+            
+            // Add trigger message to transcript
+            const triggerNode = document.createElement('div');
+            triggerNode.className = 'trigger';
+            triggerNode.textContent = message;
+            transcriptDiv.insertBefore(triggerNode, transcriptDiv.firstChild);
+            transcriptDiv.insertBefore(document.createElement('br'), transcriptDiv.firstChild);
+            
+            // Also show in status
+            updateStatus(message, 'success');
+        }
+        
+        // Start recording
+        let audioContext;
+        let scriptNode;
+        let input;
+        let stream;
+        let pcmBuffer = [];
+        let chunkInterval;
+        const RECORD_SECONDS = 2;
 
-        socket = new WebSocket("wss://scarylasers--triggerword-whisper-fastapi-app.modal.run/ws");
+        async function startRecording() {
+            try {
+                updateStatus('Requesting microphone access...');
+                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                input = audioContext.createMediaStreamSource(stream);
+                scriptNode = audioContext.createScriptProcessor(4096, 1, 1);
+                scriptNode.onaudioprocess = processAudio;
+                input.connect(scriptNode);
+                scriptNode.connect(audioContext.destination);
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                statusDiv.classList.add('recording');
+                isRecording = true;
+                updateStatus('Recording...', 'success');
+                pcmBuffer = [];
+                chunkInterval = setInterval(sendPcmChunk, RECORD_SECONDS * 1000);
+            } catch (error) {
+                console.error('Error accessing microphone:', error);
+                updateStatus('Error accessing microphone: ' + error.message, 'error');
+            }
+        }
 
-        socket.onopen = () => {
-          console.log("✅ WebSocket connected");
-        };
+        function processAudio(e) {
+            if (!isRecording) return;
+            const inputData = e.inputBuffer.getChannelData(0);
+            // Convert Float32 [-1,1] to Int16 PCM
+            let pcm = new Int16Array(inputData.length);
+            for (let i = 0; i < inputData.length; i++) {
+                let s = Math.max(-1, Math.min(1, inputData[i]));
+                pcm[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+            pcmBuffer.push(new Int16Array(pcm));
+        }
 
-        socket.onmessage = (event) => {
-          const text = event.data;
-          console.log("🔊 Transcription:", text);
-          output.innerText = "🧠 " + text;
-        };
+        function sendPcmChunk() {
+            if (!isRecording || pcmBuffer.length === 0) return;
+            // Concatenate all PCM chunks
+            let totalLength = pcmBuffer.reduce((acc, arr) => acc + arr.length, 0);
+            let combined = new Int16Array(totalLength);
+            let offset = 0;
+            for (let arr of pcmBuffer) {
+                combined.set(arr, offset);
+                offset += arr.length;
+            }
+            pcmBuffer = [];
+            // Send as ArrayBuffer
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(combined.buffer);
+            }
+        }
 
-        socket.onerror = (e) => {
-          console.error("❌ WebSocket error:", e);
-          output.innerText = "WebSocket error occurred.";
-          stopListening();
-        };
+        function stopRecording() {
+            isRecording = false;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            statusDiv.classList.remove('recording');
+            if (chunkInterval) clearInterval(chunkInterval);
+            if (scriptNode) scriptNode.disconnect();
+            if (input) input.disconnect();
+            if (audioContext) audioContext.close();
+            if (stream) stream.getTracks().forEach(track => track.stop());
+            pcmBuffer = [];
+            updateStatus('Recording stopped');
+        }
 
-        socket.onclose = (event) => {
-          console.warn("🔌 WebSocket closed:", event);
-          if (!stopBtn.disabled) {
-            output.innerText = "🔌 Connection lost.";
-          }
-        };
+        // Stop recording
+        function stopRecording() {
+            if (isRecording) {
+                isRecording = false;
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                statusDiv.classList.remove('recording');
+                // Send stop signal to backend for immediate cleanup and cost savings
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send("__STOP__");
+                    // Close the socket to free backend resources
+                    socket.close();
+                }
+            }
+        }
 
-        mediaRecorder.ondataavailable = (e) => {
-          if (e.data.size > 0 && socket.readyState === WebSocket.OPEN) {
-            console.log(`📦 Sending audio chunk: ${e.data.size} bytes`);
-            socket.send(e.data);
-          }
-        };
+        // Event listeners
+        startBtn.addEventListener('click', startRecording);
+        stopBtn.addEventListener('click', stopRecording);
 
-        mediaRecorder.onstop = () => {
-          console.log("🛑 MediaRecorder stopped");
-        };
-
-        mediaRecorder.onerror = (e) => {
-          console.error("❌ MediaRecorder error:", e);
-          output.innerText = "Recording error occurred.";
-        };
-
-        // Record in 3-second chunks to get complete WebM segments
-        mediaRecorder.start(3000);
-      } catch (err) {
-        console.error("🚫 Error starting listener:", err);
-        output.innerText = "Failed to start listening.";
-        startBtn.disabled = false;
-        stopBtn.disabled = true;
-      }
-    };
-
-    stopBtn.onclick = () => stopListening();
-
-    function stopListening() {
-      if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
-      if (audioStream) {
-        audioStream.getTracks().forEach(track => track.stop());
-        audioStream = null;
-      }
-      if (socket && socket.readyState === WebSocket.OPEN) socket.close();
-
-      if (audioContext) {
-        audioContext.close();
-        audioContext = null;
-      }
-      cancelAnimationFrame(animationId);
-      canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
-
-      output.innerText = "🛑 Stopped listening.";
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
-    }
-  </script>
+        // Handle page unload
+        window.addEventListener('beforeunload', () => {
+            if (socket) {
+                socket.close();
+            }
+            if (mediaRecorder && isRecording) {
+                mediaRecorder.stop();
+            }
+        });
+    </script>
 </body>
 </html>
