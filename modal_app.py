@@ -9,7 +9,7 @@ stub = modal.App(name="triggerword-whisper")
 app = FastAPI()
 
 whisper_image = (
-    modal.Image.from_registry("nvidia/cuda:12.1-devel-ubuntu22.04", add_python="3.10")
+    modal.Image.debian_slim(python_version="3.10")
     .apt_install([
         "ffmpeg",
         "libgl1-mesa-glx",
@@ -19,18 +19,17 @@ whisper_image = (
     ])
     .pip_install([
         "numpy<2",
-        "torch==2.2.2+cu121", 
-        "torchaudio==2.2.2+cu121",
+        "torch==2.2.2", 
+        "torchaudio==2.2.2",
         "ctranslate2",
         "faster-whisper",
         "ffmpeg-python",
         "fastapi",
         "uvicorn",
         "aiofiles",
-    ], extra_index_url="https://download.pytorch.org/whl/cu121")
+    ])
     .env({
         "PYTHONUNBUFFERED": "1",
-        "CUDA_VISIBLE_DEVICES": "0",
     })
 )
 
@@ -56,6 +55,9 @@ def fastapi_app():
     async def transcribe_websocket(websocket: WebSocket):
         await websocket.accept()
         print("🔌 WebSocket connection established")
+        
+        chunk_buffer = []
+        buffer_size = 0
 
         while True:
             try:
@@ -68,67 +70,87 @@ def fastapi_app():
                     print("⚠️ Skipping small chunk")
                     continue
 
-                # Detect audio format by checking file header
-                is_wav = chunk.startswith(b'RIFF') and b'WAVE' in chunk[:20]
-                is_webm = chunk.startswith(b'\x1a\x45\xdf\xa3') or b'webm' in chunk[:100].lower()
+                # Add chunk to buffer
+                chunk_buffer.append(chunk)
+                buffer_size += len(chunk)
                 
-                if is_wav:
-                    file_ext = ".wav"
-                    print("🎵 Detected WAV format")
-                elif is_webm:
-                    file_ext = ".webm"
-                    print("🎵 Detected WebM format")
-                else:
-                    # Default to webm and let ffmpeg try to handle it
-                    file_ext = ".webm"
-                    print("🎵 Unknown format, assuming WebM")
-
-                # Save the audio chunk to a temporary file
-                with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as temp_audio:
-                    audio_path = temp_audio.name
-                    temp_audio.write(chunk)
-
-                print(f"💾 Saved audio to: {audio_path}")
-                
-                # If it's already WAV, we might be able to use it directly
-                if is_wav:
-                    # Check if it's the right format for Whisper (16kHz, mono)
-                    wav_path = audio_path
-                    # Convert to ensure proper format
-                    final_wav_path = wav_path.replace(".wav", "_final.wav")
-                    result = subprocess.run([
-                        "ffmpeg", "-y",
-                        "-i", wav_path,
-                        "-ar", "16000",
-                        "-ac", "1",
-                        "-f", "wav",
-                        final_wav_path
-                    ], capture_output=True, text=True)
+                # Process when we have enough data (about 3-4 chunks for 3-second recording)
+                if len(chunk_buffer) >= 3 or buffer_size >= 120000:  # ~120KB should be enough for 3 seconds
+                    print(f"🔄 Processing {len(chunk_buffer)} chunks, total size: {buffer_size} bytes")
                     
-                    if result.returncode == 0:
-                        wav_path = final_wav_path
+                    # Combine all chunks into a single WebM file
+                    combined_data = b''.join(chunk_buffer)
+                    
+                    # Reset buffer
+                    chunk_buffer = []
+                    buffer_size = 0
+                    
+                    # Detect audio format by checking file header
+                    is_wav = combined_data.startswith(b'RIFF') and b'WAVE' in combined_data[:20]
+                    is_webm = combined_data.startswith(b'\x1a\x45\xdf\xa3') or b'webm' in combined_data[:100].lower()
+                    
+                    if is_wav:
+                        file_ext = ".wav"
+                        print("🎵 Detected WAV format")
+                    elif is_webm:
+                        file_ext = ".webm"
+                        print("🎵 Detected WebM format")
                     else:
-                        print(f"❌ WAV conversion failed: {result.stderr}")
-                        await websocket.send_text("error: WAV conversion failed")
-                        try:
-                            os.remove(audio_path)
-                        except:
-                            pass
-                        continue
-                else:
-                    # Convert WebM to WAV
+                        # Check if it looks like WebM data (common patterns)
+                        if b'\x1a\x45' in combined_data[:50] or b'webm' in combined_data[:200].lower():
+                            file_ext = ".webm"
+                            print("🎵 Assuming WebM format based on content")
+                        else:
+                            file_ext = ".webm"
+                            print("🎵 Unknown format, defaulting to WebM")
+
+                    # Save the combined audio data to a temporary file
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as temp_audio:
+                        audio_path = temp_audio.name
+                        temp_audio.write(combined_data)
+
+                    print(f"💾 Saved combined audio to: {audio_path}")
+                    
+                    # Convert to WAV for Whisper
                     wav_path = audio_path.replace(file_ext, ".wav")
-                    result = subprocess.run([
-                        "ffmpeg", "-y",
-                        "-i", audio_path,
-                        "-ar", "16000",
-                        "-ac", "1",
-                        "-f", "wav",
-                        wav_path
-                    ], capture_output=True, text=True)
+                    
+                    # Try different ffmpeg approaches for WebM
+                    if file_ext == ".webm":
+                        # First try: standard conversion
+                        result = subprocess.run([
+                            "ffmpeg", "-y", "-v", "quiet",
+                            "-i", audio_path,
+                            "-ar", "16000",
+                            "-ac", "1",
+                            "-f", "wav",
+                            wav_path
+                        ], capture_output=True, text=True)
+                        
+                        # If that fails, try forcing format
+                        if result.returncode != 0:
+                            print("⚠️ Standard conversion failed, trying forced format...")
+                            result = subprocess.run([
+                                "ffmpeg", "-y", "-v", "quiet",
+                                "-f", "matroska",
+                                "-i", audio_path,
+                                "-ar", "16000",
+                                "-ac", "1",
+                                "-f", "wav",
+                                wav_path
+                            ], capture_output=True, text=True)
+                    else:
+                        # WAV processing
+                        result = subprocess.run([
+                            "ffmpeg", "-y", "-v", "quiet",
+                            "-i", audio_path,
+                            "-ar", "16000",
+                            "-ac", "1",
+                            "-f", "wav",
+                            wav_path
+                        ], capture_output=True, text=True)
 
                     if result.returncode != 0:
-                        print(f"❌ ffmpeg stderr:\n{result.stderr}")
+                        print(f"❌ ffmpeg conversion failed: {result.stderr}")
                         await websocket.send_text("error: audio conversion failed")
                         # Clean up files
                         try:
@@ -137,44 +159,41 @@ def fastapi_app():
                             pass
                         continue
 
-                print(f"✅ Audio ready for transcription: {wav_path}")
+                    print(f"✅ Audio ready for transcription: {wav_path}")
 
-                # Transcribe the audio
-                try:
-                    segments, _ = model.transcribe(wav_path, vad_filter=True)
-                    transcription_found = False
-                    
-                    for segment in segments:
-                        text = segment.text.strip().lower()
-                        if text:  # Only process non-empty transcriptions
-                            transcription_found = True
-                            print(f"🧠 Transcribed: '{text}'")
-
-                            # Check for trigger words
-                            if "let's go" in text:
-                                await websocket.send_text("trigger:letsgo")
-                            elif "cute" in text:
-                                await websocket.send_text("trigger:cute")
-                            else:
-                                await websocket.send_text(text)
-                    
-                    if not transcription_found:
-                        print("🔇 No speech detected in audio chunk")
+                    # Transcribe the audio
+                    try:
+                        segments, _ = model.transcribe(wav_path, vad_filter=True)
+                        transcription_found = False
                         
-                except Exception as e:
-                    print(f"❌ Transcription failed: {e}")
-                    await websocket.send_text("error: transcription failed")
+                        for segment in segments:
+                            text = segment.text.strip().lower()
+                            if text:  # Only process non-empty transcriptions
+                                transcription_found = True
+                                print(f"🧠 Transcribed: '{text}'")
 
-                # Clean up temporary files
-                try:
-                    os.remove(audio_path)
-                    if os.path.exists(wav_path) and wav_path != audio_path:
-                        os.remove(wav_path)
-                    # Clean up the final wav if it was created
-                    if 'final_wav_path' in locals() and os.path.exists(final_wav_path):
-                        os.remove(final_wav_path)
-                except Exception as e:
-                    print(f"⚠️ Failed to clean up files: {e}")
+                                # Check for trigger words
+                                if "let's go" in text:
+                                    await websocket.send_text("trigger:letsgo")
+                                elif "cute" in text:
+                                    await websocket.send_text("trigger:cute")
+                                else:
+                                    await websocket.send_text(text)
+                        
+                        if not transcription_found:
+                            print("🔇 No speech detected in audio chunk")
+                            
+                    except Exception as e:
+                        print(f"❌ Transcription failed: {e}")
+                        await websocket.send_text("error: transcription failed")
+
+                    # Clean up temporary files
+                    try:
+                        os.remove(audio_path)
+                        if os.path.exists(wav_path):
+                            os.remove(wav_path)
+                    except Exception as e:
+                        print(f"⚠️ Failed to clean up files: {e}")
 
             except Exception as e:
                 print(f"❌ WebSocket error: {e}")
