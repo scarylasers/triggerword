@@ -6,15 +6,15 @@ app = FastAPI()
 
 whisper_image = (
     modal.Image
-    .from_registry("nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu20.04", add_python="3.10")
+    .debian_slim(python_version="3.10")  # ✅ Better default compatibility
     .pip_install(
-        "torch",  # ✅ Required for faster-whisper
+        "torch==2.2.2",  # ✅ Works with Modal GPU runtime
         "faster-whisper",
         "ctranslate2",
         "ffmpeg-python",
         "fastapi",
         "uvicorn",
-        "aiofiles"
+        "aiofiles",
     )
     .apt_install("ffmpeg")
 )
