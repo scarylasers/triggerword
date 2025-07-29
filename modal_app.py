@@ -54,7 +54,7 @@ def fastapi_app():
 
         while True:
             try:
-                # Receive a complete WebM chunk from MediaRecorder
+                # Receive audio chunk from MediaRecorder
                 chunk = await websocket.receive_bytes()
                 print(f"📦 Received audio chunk: {len(chunk)} bytes")
                 
@@ -63,35 +63,76 @@ def fastapi_app():
                     print("⚠️ Skipping small chunk")
                     continue
 
-                # Save the WebM chunk to a temporary file
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_webm:
-                    webm_path = temp_webm.name
-                    temp_webm.write(chunk)
+                # Detect audio format by checking file header
+                is_wav = chunk.startswith(b'RIFF') and b'WAVE' in chunk[:20]
+                is_webm = chunk.startswith(b'\x1a\x45\xdf\xa3') or b'webm' in chunk[:100].lower()
+                
+                if is_wav:
+                    file_ext = ".wav"
+                    print("🎵 Detected WAV format")
+                elif is_webm:
+                    file_ext = ".webm"
+                    print("🎵 Detected WebM format")
+                else:
+                    # Default to webm and let ffmpeg try to handle it
+                    file_ext = ".webm"
+                    print("🎵 Unknown format, assuming WebM")
 
-                print(f"💾 Saved WebM to: {webm_path}")
-                wav_path = webm_path.replace(".webm", ".wav")
+                # Save the audio chunk to a temporary file
+                with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as temp_audio:
+                    audio_path = temp_audio.name
+                    temp_audio.write(chunk)
 
-                # Convert WebM to WAV using ffmpeg
-                result = subprocess.run([
-                    "ffmpeg", "-y",
-                    "-i", webm_path,
-                    "-ar", "16000",
-                    "-ac", "1",
-                    "-f", "wav",
-                    wav_path
-                ], capture_output=True, text=True)
+                print(f"💾 Saved audio to: {audio_path}")
+                
+                # If it's already WAV, we might be able to use it directly
+                if is_wav:
+                    # Check if it's the right format for Whisper (16kHz, mono)
+                    wav_path = audio_path
+                    # Convert to ensure proper format
+                    final_wav_path = wav_path.replace(".wav", "_final.wav")
+                    result = subprocess.run([
+                        "ffmpeg", "-y",
+                        "-i", wav_path,
+                        "-ar", "16000",
+                        "-ac", "1",
+                        "-f", "wav",
+                        final_wav_path
+                    ], capture_output=True, text=True)
+                    
+                    if result.returncode == 0:
+                        wav_path = final_wav_path
+                    else:
+                        print(f"❌ WAV conversion failed: {result.stderr}")
+                        await websocket.send_text("error: WAV conversion failed")
+                        try:
+                            os.remove(audio_path)
+                        except:
+                            pass
+                        continue
+                else:
+                    # Convert WebM to WAV
+                    wav_path = audio_path.replace(file_ext, ".wav")
+                    result = subprocess.run([
+                        "ffmpeg", "-y",
+                        "-i", audio_path,
+                        "-ar", "16000",
+                        "-ac", "1",
+                        "-f", "wav",
+                        wav_path
+                    ], capture_output=True, text=True)
 
-                if result.returncode != 0:
-                    print(f"❌ ffmpeg stderr:\n{result.stderr}")
-                    await websocket.send_text("error: audio conversion failed")
-                    # Clean up files
-                    try:
-                        os.remove(webm_path)
-                    except:
-                        pass
-                    continue
+                    if result.returncode != 0:
+                        print(f"❌ ffmpeg stderr:\n{result.stderr}")
+                        await websocket.send_text("error: audio conversion failed")
+                        # Clean up files
+                        try:
+                            os.remove(audio_path)
+                        except:
+                            pass
+                        continue
 
-                print(f"✅ Converted to WAV: {wav_path}")
+                print(f"✅ Audio ready for transcription: {wav_path}")
 
                 # Transcribe the audio
                 try:
@@ -121,9 +162,12 @@ def fastapi_app():
 
                 # Clean up temporary files
                 try:
-                    os.remove(webm_path)
-                    if os.path.exists(wav_path):
+                    os.remove(audio_path)
+                    if os.path.exists(wav_path) and wav_path != audio_path:
                         os.remove(wav_path)
+                    # Clean up the final wav if it was created
+                    if 'final_wav_path' in locals() and os.path.exists(final_wav_path):
+                        os.remove(final_wav_path)
                 except Exception as e:
                     print(f"⚠️ Failed to clean up files: {e}")
 

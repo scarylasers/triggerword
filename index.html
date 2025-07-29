@@ -79,7 +79,17 @@
         }
         drawMeter();
 
-        mediaRecorder = new MediaRecorder(audioStream, { mimeType: "audio/webm" });
+        // Try WAV first, fallback to WebM if not supported
+        let mimeType = "audio/wav";
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = "audio/webm;codecs=opus";
+          if (!MediaRecorder.isTypeSupported(mimeType)) {
+            mimeType = "audio/webm";
+          }
+        }
+        
+        console.log(`🎵 Using MIME type: ${mimeType}`);
+        mediaRecorder = new MediaRecorder(audioStream, { mimeType: mimeType });
 
         socket = new WebSocket("wss://scarylasers--triggerword-whisper-fastapi-app.modal.run/ws");
 
