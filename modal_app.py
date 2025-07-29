@@ -35,7 +35,7 @@ whisper_image = (
 
 @stub.function(
     image=whisper_image,
-    gpu="A10G",
+    gpu="T4",  # Use T4 GPU for lower cost
     timeout=600,
     scaledown_window=300,
 )

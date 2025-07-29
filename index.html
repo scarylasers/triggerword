@@ -102,20 +102,19 @@
         
         // Audio recording variables
         let mediaRecorder;
-        let socket;
+        let socket = null;
         let isRecording = false;
-        
-        // WebSocket connection
+
+        // Open WebSocket only when recording starts
         function connectWebSocket() {
             const wsUrl = 'wss://scarylasers--triggerword-whisper-fastapi-app.modal.run/ws';
-            
             socket = new WebSocket(wsUrl);
-            
+
             socket.onopen = () => {
                 console.log('WebSocket connected');
                 updateStatus('Connected to server', 'info');
             };
-            
+
             socket.onmessage = (event) => {
                 const message = event.data;
                 console.log('Message from server:', message);
@@ -209,13 +208,11 @@
         let audioContext;
         let scriptNode;
         let input;
-        let stream;
-        let pcmBuffer = [];
-        let chunkInterval;
-        const RECORD_SECONDS = 2;
 
         async function startRecording() {
             try {
+                // Open WebSocket connection only when starting recording (resource/cost saving)
+                connectWebSocket();
                 updateStatus('Requesting microphone access...');
                 stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
@@ -240,13 +237,21 @@
         function processAudio(e) {
             if (!isRecording) return;
             const inputData = e.inputBuffer.getChannelData(0);
-            // Convert Float32 [-1,1] to Int16 PCM
-            let pcm = new Int16Array(inputData.length);
+            // Silence detection: calculate RMS (root mean square)
+            let sumSquares = 0;
             for (let i = 0; i < inputData.length; i++) {
-                let s = Math.max(-1, Math.min(1, inputData[i]));
-                pcm[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                sumSquares += inputData[i] * inputData[i];
             }
-            pcmBuffer.push(new Int16Array(pcm));
+            const rms = Math.sqrt(sumSquares / inputData.length);
+            // Only buffer if above threshold (0.01) to save compute and improve UX
+            if (rms > 0.01) {
+                let pcm = new Int16Array(inputData.length);
+                for (let i = 0; i < inputData.length; i++) {
+                    let s = Math.max(-1, Math.min(1, inputData[i]));
+                    pcm[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                }
+                pcmBuffer.push(new Int16Array(pcm));
+            }
         }
 
         function sendPcmChunk() {
@@ -293,6 +298,7 @@
                     // Close the socket to free backend resources
                     socket.close();
                 }
+                socket = null;
             }
         }
 
