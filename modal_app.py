@@ -44,7 +44,7 @@ def fastapi_app():
                 chunk = await websocket.receive_bytes()
                 buffer += chunk
 
-                if len(buffer) > 25000:
+                if len(buffer) > 50000:
                     # Save incoming blob as webm
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as f:
                         f.write(buffer)
