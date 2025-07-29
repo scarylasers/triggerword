@@ -11,13 +11,6 @@
 </head>
 <body>
   <h2>🎤 TriggerWord Tester</h2>
-  <label for="audioSource">Choose Audio Source:</label>
-  <select id="audioSource">
-    <option value="mic">🎙️ Mic Only</option>
-    <option value="twitch">📺 Twitch Stream Only</option>
-    <option value="mixed" selected>🔀 Mic + Twitch (Mixed)</option>
-  </select>
-  <br>
   <button onclick="startTriggerWord()">Start Listening</button>
   <p><strong>Status:</strong> <span id="status">Idle</span></p>
 
@@ -25,12 +18,9 @@
   <h4>Debug Log:</h4>
   <div id="log"></div>
 
-  <!-- Twitch video must be from your own channel with proper parent domain -->
-  <video id="twitch" src="https://player.twitch.tv/?channel=scarylasers&parent=localhost" autoplay muted style="width: 300px;" hidden></video>
-
   <script>
-    const wsUrl = "wss://scarylasers--triggerword-whisper-fastapi-app-dev.modal.run/ws";  // ← replace this
-    let ws, ctx, processor;
+    const wsUrl = "wss://scarylasers--triggerword-whisper-fastapi-app-dev.modal.run/ws";
+    let ws;
 
     function log(msg) {
       const logEl = document.getElementById("log");
@@ -39,82 +29,41 @@
     }
 
     async function startTriggerWord() {
-      const mode = document.getElementById("audioSource").value;
-      document.getElementById("status").innerText = `Connecting (${mode})`;
-      log(`Selected audio mode: ${mode}`);
+      document.getElementById("status").innerText = "Connecting...";
+      ws = new WebSocket(wsUrl);
+      ws.binaryType = "arraybuffer";
 
-      try {
-        ctx = new AudioContext();
-        const mixDest = ctx.createMediaStreamDestination();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
 
-        if (mode === "mic" || mode === "mixed") {
-          const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
-          const micSource = ctx.createMediaStreamSource(mic);
-          micSource.connect(mixDest);
-          log("✅ Microphone connected.");
+      ws.onopen = () => {
+        document.getElementById("status").innerText = "Connected";
+        log("🌐 WebSocket connected");
+        recorder.start(1000); // 1s chunks
+        log("🎙️ MediaRecorder started");
+      };
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0 && ws.readyState === 1) {
+          ws.send(e.data);
+          log("📤 Sent audio blob to Modal");
         }
+      };
 
-        if (mode === "twitch" || mode === "mixed") {
-          const twitchStream = document.getElementById("twitch").captureStream();
-          const twitchSource = ctx.createMediaStreamSource(twitchStream);
-          twitchSource.connect(mixDest);
-          log("✅ Twitch stream audio connected.");
+      ws.onmessage = (e) => {
+        const msg = e.data.trim();
+        log(`📨 Received: ${msg}`);
+
+        if (msg.startsWith("trigger:")) {
+          const trigger = msg.split(":")[1];
+          if (trigger === "letsgo") new Audio("letsgo.mp3").play();
+          if (trigger === "cute") new Audio("cute.mp3").play();
+        } else {
+          document.getElementById("transcription").innerText = msg;
         }
+      };
 
-        const finalStream = mixDest.stream;
-        const audioSource = ctx.createMediaStreamSource(finalStream);
-
-        processor = ctx.createScriptProcessor(2048, 1, 1);
-        audioSource.connect(processor);
-        processor.connect(ctx.destination);
-
-        ws = new WebSocket(wsUrl);
-
-        ws.onopen = () => {
-          document.getElementById("status").innerText = "Connected";
-          log("🌐 WebSocket connected.");
-        };
-
-        ws.onmessage = (e) => {
-          const msg = e.data.trim();
-          log(`📨 Received: ${msg}`);
-
-          if (msg.startsWith("trigger:")) {
-            const trigger = msg.split(":")[1];
-            if (trigger === "letsgo") new Audio("letsgo.mp3").play();
-            if (trigger === "cute") new Audio("cute.mp3").play();
-          } else {
-            document.getElementById("transcription").innerText = msg;
-          }
-        };
-
-        ws.onerror = (e) => {
-          log("❌ WebSocket error: " + e.message);
-        };
-
-        ws.onclose = () => {
-          log("⚠️ WebSocket closed.");
-          document.getElementById("status").innerText = "Disconnected";
-        };
-
-        processor.onaudioprocess = (e) => {
-          const input = e.inputBuffer.getChannelData(0);
-          const buffer = new Int16Array(input.length);
-          for (let i = 0; i < input.length; i++) {
-            buffer[i] = input[i] * 32767;
-          }
-
-          if (ws.readyState === 1) {
-            ws.send(buffer.buffer);
-            log(`📤 Sent audio chunk (${buffer.length} samples)`);
-          } else {
-            log("⚠️ WebSocket not ready.");
-          }
-        };
-      } catch (err) {
-        log("❌ Error initializing audio: " + err.message);
-        document.getElementById("status").innerText = "Error";
-      }
+      ws.onerror = (err) => log("❌ WebSocket error: " + err.message);
     }
   </script>
 </body>

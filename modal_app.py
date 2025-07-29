@@ -1,19 +1,15 @@
 import modal
 from fastapi import FastAPI, WebSocket
 
-# Create the Modal app object
 stub = modal.App(name="triggerword-whisper")
-
-# FastAPI instance
 app = FastAPI()
 
-# Modal container image with required libraries
 whisper_image = (
     modal.Image.debian_slim()
-    .pip_install("faster-whisper", "ffmpeg-python", "fastapi", "uvicorn", "aiofiles")
+    .apt_install("ffmpeg")
+    .pip_install("faster-whisper", "fastapi", "uvicorn", "ffmpeg-python", "aiofiles")
 )
 
-# Modal ASGI app that runs with GPU
 @stub.function(
     image=whisper_image,
     gpu="A10G",
@@ -23,9 +19,9 @@ whisper_image = (
 @modal.asgi_app()
 def fastapi_app():
     import tempfile
+    import subprocess
     from faster_whisper import WhisperModel
 
-    # Load the Whisper model once inside the container
     model = WhisperModel("base", compute_type="float16")
 
     @app.websocket("/ws")
@@ -35,15 +31,26 @@ def fastapi_app():
 
         while True:
             try:
-                data = await websocket.receive_bytes()
-                buffer += data
+                chunk = await websocket.receive_bytes()
+                buffer += chunk
 
-                if len(buffer) > 32000:  # Roughly 1 second of 16-bit audio
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
+                if len(buffer) > 25000:
+                    # Save incoming blob as webm
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as f:
                         f.write(buffer)
-                        temp_path = f.name
+                        temp_webm_path = f.name
 
-                    segments, _ = model.transcribe(temp_path)
+                    # Convert webm to wav
+                    temp_wav_path = temp_webm_path.replace(".webm", ".wav")
+                    subprocess.run([
+                        "ffmpeg", "-y",
+                        "-i", temp_webm_path,
+                        "-ar", "16000", "-ac", "1",
+                        "-f", "wav", temp_wav_path
+                    ], check=True)
+
+                    # Transcribe
+                    segments, _ = model.transcribe(temp_wav_path)
                     for segment in segments:
                         text = segment.text.lower()
                         print(f"🧠 Transcribed: {text}")
@@ -63,5 +70,4 @@ def fastapi_app():
 
     return app
 
-# Required to expose the stub for `modal deploy modal_app.stub`
 stub = stub
