@@ -5,12 +5,12 @@ stub = modal.App(name="triggerword-whisper")
 app = FastAPI()
 
 whisper_image = (
-    modal.Image.debian_slim()
+    modal.Image
+    .from_registry("nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu20.04", add_python="3.10")
     .pip_install(
         "faster-whisper",
         "ctranslate2",
         "ffmpeg-python",
-        "torch",  # CUDA-ready build is installed by Modal
         "fastapi",
         "uvicorn",
         "aiofiles"
@@ -18,12 +18,12 @@ whisper_image = (
     .apt_install("ffmpeg")
 )
 
-
 @stub.function(
     image=whisper_image,
     gpu="A10G",
     timeout=600,
     scaledown_window=300,
+    retries=0,  # avoid restart loops
 )
 @modal.asgi_app()
 def fastapi_app():
@@ -31,7 +31,9 @@ def fastapi_app():
     import subprocess
     from faster_whisper import WhisperModel
     import torch
-    print("🔥 CUDA Available:", torch.cuda.is_available())  # ✅ check GPU in container
+    import os
+
+    print("🔥 CUDA Available:", torch.cuda.is_available())
     model = WhisperModel("base", compute_type="float16")
 
     @app.websocket("/ws")
@@ -44,34 +46,47 @@ def fastapi_app():
                 chunk = await websocket.receive_bytes()
                 buffer += chunk
 
-                if len(buffer) > 50000:
+                # Analyze after 5 seconds of audio (~128kb per second mono OPUS)
+                if len(buffer) >= 64000:
                     # Save incoming blob as webm
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as f:
                         f.write(buffer)
                         temp_webm_path = f.name
 
-                    # Convert webm to wav
                     temp_wav_path = temp_webm_path.replace(".webm", ".wav")
-                    subprocess.run([
-                        "ffmpeg", "-y",
-                        "-i", temp_webm_path,
-                        "-ar", "16000", "-ac", "1",
-                        "-f", "wav", temp_wav_path
-                    ], check=True)
+
+                    # Convert to wav with ffmpeg
+                    try:
+                        subprocess.run([
+                            "ffmpeg", "-y",
+                            "-i", temp_webm_path,
+                            "-ar", "16000", "-ac", "1",
+                            "-f", "wav", temp_wav_path
+                        ], check=True)
+                    except subprocess.CalledProcessError as e:
+                        print(f"❌ ffmpeg failed: {e}")
+                        await websocket.send_text("error: audio conversion failed")
+                        buffer = b""
+                        continue
 
                     # Transcribe
-                    segments, _ = model.transcribe(temp_wav_path)
-                    for segment in segments:
-                        text = segment.text.lower()
-                        print(f"🧠 Transcribed: {text}")
+                    try:
+                        segments, _ = model.transcribe(temp_wav_path, vad_filter=True)
+                        for segment in segments:
+                            text = segment.text.strip().lower()
+                            print(f"🧠 Transcribed: {text}")
 
-                        if "let's go" in text:
-                            await websocket.send_text("trigger:letsgo")
-                        elif "cute" in text:
-                            await websocket.send_text("trigger:cute")
-                        else:
-                            await websocket.send_text(text)
+                            if "let's go" in text:
+                                await websocket.send_text("trigger:letsgo")
+                            elif "cute" in text:
+                                await websocket.send_text("trigger:cute")
+                            else:
+                                await websocket.send_text(text)
+                    except Exception as e:
+                        print(f"❌ Transcription failed: {e}")
+                        await websocket.send_text("error: transcription failed")
 
+                    # Clear buffer for next chunk
                     buffer = b""
 
             except Exception as e:
@@ -79,5 +94,3 @@ def fastapi_app():
                 break
 
     return app
-
-stub = stub
