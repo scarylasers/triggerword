@@ -5,13 +5,12 @@ stub = modal.App(name="triggerword-whisper")
 app = FastAPI()
 
 whisper_image = (
-    modal.Image
-    .from_registry("nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu20.04", add_python="3.10")
+    modal.Image.debian_slim()
     .pip_install(
-        "torch",  # 👈 add this line
         "faster-whisper",
         "ctranslate2",
         "ffmpeg-python",
+        "torch",  # CUDA-ready build is installed by Modal
         "fastapi",
         "uvicorn",
         "aiofiles"
