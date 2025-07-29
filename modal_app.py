@@ -3,7 +3,8 @@ from fastapi import FastAPI, WebSocket
 import tempfile
 import subprocess
 import os
-import aiofiles
+import io
+import numpy as np
 
 stub = modal.App(name="triggerword-whisper")
 app = FastAPI()
@@ -19,14 +20,14 @@ whisper_image = (
     ])
     .pip_install([
         "numpy<2",
-        "torch==2.2.2", 
+        "torch==2.2.2",
         "torchaudio==2.2.2",
-        "ctranslate2",
-        "faster-whisper",
+        "openai-whisper",
         "ffmpeg-python",
         "fastapi",
         "uvicorn",
         "aiofiles",
+        "pydub",
     ])
     .env({
         "PYTHONUNBUFFERED": "1",
@@ -36,26 +37,55 @@ whisper_image = (
 
 @stub.function(
     image=whisper_image,
-    gpu="A10G",
-    timeout=600,
-    scaledown_window=300,
+    gpu="T4",  # Use cheaper T4 GPU instead of A10G
+    timeout=300,  # Shorter timeout for cost savings
+    scaledown_window=60,  # Faster scaledown for cost savings
 )
 @modal.asgi_app()
 def fastapi_app():
-    from faster_whisper import WhisperModel
+    import whisper
     import torch
+    from pydub import AudioSegment
 
     print("🔥 CUDA Available:", torch.cuda.is_available())
-    print("🚀 Using GPU acceleration with faster-whisper")
-    
-    # Use GPU with faster-whisper for real-time performance
-    model = WhisperModel("base", device="cuda", compute_type="float16")
+
+    # Use smaller model for cost efficiency
+    try:
+        if torch.cuda.is_available():
+            print("🚀 Loading Whisper TINY model on GPU for cost efficiency")
+            model = whisper.load_model("tiny", device="cuda")  # Tiny model is much faster/cheaper
+        else:
+            print("🖥️ Loading Whisper TINY model on CPU")
+            model = whisper.load_model("tiny", device="cpu")
+        print("✅ Whisper model loaded successfully")
+    except Exception as e:
+        print(f"⚠️ GPU failed, falling back to CPU: {e}")
+        model = whisper.load_model("tiny", device="cpu")
+        print("✅ CPU model loaded successfully")
+
+    def wav_to_text(audio_path):
+        """Process audio file with Whisper - optimized for cost"""
+        try:
+            # Use faster settings for cost efficiency
+            result = model.transcribe(audio_path, fp16=True, language="en")
+
+            # Extract text from all segments
+            full_text = ""
+            for segment in result["segments"]:
+                text = segment["text"].strip()
+                if text:
+                    full_text += text + " "
+
+            return full_text.strip() if full_text.strip() else None
+        except Exception as e:
+            print(f"❌ Transcription error: {e}")
+            return None
 
     @app.websocket("/ws")
     async def transcribe_websocket(websocket: WebSocket):
         await websocket.accept()
         print("🔌 WebSocket connection established")
-        
+
         chunk_buffer = []
         buffer_size = 0
 
@@ -64,136 +94,117 @@ def fastapi_app():
                 # Receive audio chunk from MediaRecorder
                 chunk = await websocket.receive_bytes()
                 print(f"📦 Received audio chunk: {len(chunk)} bytes")
-                
+
                 # Skip very small chunks (likely incomplete)
-                if len(chunk) < 1000:
+                if len(chunk) < 500:  # Lower threshold for smaller files
                     print("⚠️ Skipping small chunk")
                     continue
 
                 # Add chunk to buffer
                 chunk_buffer.append(chunk)
                 buffer_size += len(chunk)
-                
-                # Process when we have enough data (about 3-4 chunks for 3-second recording)
-                if len(chunk_buffer) >= 3 or buffer_size >= 120000:  # ~120KB should be enough for 3 seconds
+
+                # Process with smaller buffer for faster response (cost vs latency tradeoff)
+                if len(chunk_buffer) >= 2 or buffer_size >= 80000:  # Smaller buffer for faster processing
                     print(f"🔄 Processing {len(chunk_buffer)} chunks, total size: {buffer_size} bytes")
-                    
-                    # Combine all chunks into a single WebM file
+
+                    # Combine all chunks into a single file
                     combined_data = b''.join(chunk_buffer)
-                    
+
                     # Reset buffer
                     chunk_buffer = []
                     buffer_size = 0
-                    
-                    # Detect audio format by checking file header
-                    is_wav = combined_data.startswith(b'RIFF') and b'WAVE' in combined_data[:20]
-                    is_webm = combined_data.startswith(b'\x1a\x45\xdf\xa3') or b'webm' in combined_data[:100].lower()
-                    
-                    if is_wav:
-                        file_ext = ".wav"
-                        print("🎵 Detected WAV format")
-                    elif is_webm:
-                        file_ext = ".webm"
-                        print("🎵 Detected WebM format")
-                    else:
-                        # Check if it looks like WebM data (common patterns)
-                        if b'\x1a\x45' in combined_data[:50] or b'webm' in combined_data[:200].lower():
-                            file_ext = ".webm"
-                            print("🎵 Assuming WebM format based on content")
-                        else:
-                            file_ext = ".webm"
-                            print("🎵 Unknown format, defaulting to WebM")
 
-                    # Save the combined audio data to a temporary file
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as temp_audio:
-                        audio_path = temp_audio.name
-                        temp_audio.write(combined_data)
+                    # Try to process with pydub first (more forgiving than ffmpeg)
+                    try:
+                        # Save raw data to temp file
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_file:
+                            temp_file.write(combined_data)
+                            temp_path = temp_file.name
 
-                    print(f"💾 Saved combined audio to: {audio_path}")
-                    
-                    # Convert to WAV for Whisper
-                    wav_path = audio_path.replace(file_ext, ".wav")
-                    
-                    # Try different ffmpeg approaches for WebM
-                    if file_ext == ".webm":
-                        # First try: standard conversion
-                        result = subprocess.run([
-                            "ffmpeg", "-y", "-v", "quiet",
-                            "-i", audio_path,
-                            "-ar", "16000",
-                            "-ac", "1",
-                            "-f", "wav",
-                            wav_path
-                        ], capture_output=True, text=True)
-                        
-                        # If that fails, try forcing format
-                        if result.returncode != 0:
-                            print("⚠️ Standard conversion failed, trying forced format...")
-                            result = subprocess.run([
-                                "ffmpeg", "-y", "-v", "quiet",
-                                "-f", "matroska",
-                                "-i", audio_path,
-                                "-ar", "16000",
-                                "-ac", "1",
-                                "-f", "wav",
-                                wav_path
-                            ], capture_output=True, text=True)
-                    else:
-                        # WAV processing
-                        result = subprocess.run([
-                            "ffmpeg", "-y", "-v", "quiet",
-                            "-i", audio_path,
-                            "-ar", "16000",
-                            "-ac", "1",
-                            "-f", "wav",
-                            wav_path
-                        ], capture_output=True, text=True)
+                        print(f"💾 Saved audio data to: {temp_path}")
 
-                    if result.returncode != 0:
-                        print(f"❌ ffmpeg conversion failed: {result.stderr}")
-                        await websocket.send_text("error: audio conversion failed")
-                        # Clean up files
+                        # Try to load with pydub (more forgiving than ffmpeg)
                         try:
-                            os.remove(audio_path)
-                        except:
-                            pass
-                        continue
+                            audio = AudioSegment.from_file(temp_path)
+                            print("✅ pydub successfully loaded audio")
 
-                    print(f"✅ Audio ready for transcription: {wav_path}")
+                            # Convert to low-quality WAV for cost efficiency
+                            wav_path = temp_path.replace(".webm", ".wav")
+                            # Use very low sample rate for speech recognition (saves bandwidth/processing)
+                            audio = audio.set_frame_rate(8000).set_channels(1)  # 8kHz mono is fine for speech
+                            audio.export(wav_path, format="wav")
+                            print(f"✅ Converted to low-quality WAV (8kHz mono): {wav_path}")
 
-                    # Transcribe the audio
-                    try:
-                        segments, _ = model.transcribe(wav_path, vad_filter=True)
-                        transcription_found = False
-                        
-                        for segment in segments:
-                            text = segment.text.strip().lower()
-                            if text:  # Only process non-empty transcriptions
-                                transcription_found = True
-                                print(f"🧠 Transcribed: '{text}'")
+                        except Exception as pydub_error:
+                            print(f"⚠️ pydub failed: {pydub_error}, trying ffmpeg...")
 
-                                # Check for trigger words
-                                if "let's go" in text:
-                                    await websocket.send_text("trigger:letsgo")
-                                elif "cute" in text:
-                                    await websocket.send_text("trigger:cute")
+                            # Fallback to ffmpeg with low quality settings
+                            wav_path = temp_path.replace(".webm", ".wav")
+
+                            # Try multiple ffmpeg approaches with cost-optimized settings
+                            ffmpeg_commands = [
+                                # Low quality for cost savings
+                                ["ffmpeg", "-y", "-v", "quiet", "-i", temp_path, "-ar", "8000", "-ac", "1", "-f", "wav",
+                                 wav_path],
+                                # Force matroska with low quality
+                                ["ffmpeg", "-y", "-v", "quiet", "-f", "matroska", "-i", temp_path, "-ar", "8000", "-ac",
+                                 "1", "-f", "wav", wav_path],
+                                # Extended analysis with low quality
+                                ["ffmpeg", "-y", "-v", "quiet", "-analyzeduration", "1000000", "-probesize", "1000000",
+                                 "-i", temp_path, "-ar", "8000", "-ac", "1", "-f", "wav", wav_path],
+                            ]
+
+                            success = False
+                            for cmd in ffmpeg_commands:
+                                result = subprocess.run(cmd, capture_output=True, text=True)
+                                if result.returncode == 0:
+                                    print("✅ ffmpeg conversion successful")
+                                    success = True
+                                    break
                                 else:
-                                    await websocket.send_text(text)
-                        
-                        if not transcription_found:
-                            print("🔇 No speech detected in audio chunk")
-                            
-                    except Exception as e:
-                        print(f"❌ Transcription failed: {e}")
-                        await websocket.send_text("error: transcription failed")
+                                    print(f"⚠️ ffmpeg attempt failed: {result.stderr}")
 
-                    # Clean up temporary files
-                    try:
-                        os.remove(audio_path)
-                        if os.path.exists(wav_path):
-                            os.remove(wav_path)
+                            if not success:
+                                print("❌ All conversion attempts failed")
+                                await websocket.send_text("error: audio conversion failed")
+                                try:
+                                    os.remove(temp_path)
+                                except:
+                                    pass
+                                continue
+
+                        # Now transcribe using cost-optimized approach
+                        print(f"🎯 Transcribing audio file: {wav_path}")
+                        transcription = wav_to_text(wav_path)
+
+                        if transcription is not None and transcription.strip():
+                            text = transcription.strip().lower()
+                            print(f"🧠 Transcribed: '{text}'")
+
+                            # Check for trigger words (optimized matching)
+                            if any(phrase in text for phrase in ["let's go", "lets go", "let go"]):
+                                await websocket.send_text("trigger:letsgo")
+                                print("🎯 Trigger detected: let's go")
+                            elif "cute" in text:
+                                await websocket.send_text("trigger:cute")
+                                print("🎯 Trigger detected: cute")
+                            else:
+                                await websocket.send_text(text)
+                        else:
+                            print("🔇 No speech detected in audio chunk")
+
+                        # Clean up temporary files
+                        try:
+                            os.remove(temp_path)
+                            if os.path.exists(wav_path):
+                                os.remove(wav_path)
+                        except Exception as e:
+                            print(f"⚠️ Failed to clean up files: {e}")
+
                     except Exception as e:
-                        print(f"⚠️ Failed to clean up files: {e}")
+                        print(f"❌ Audio processing failed: {e}")
+                        await websocket.send_text("error: audio processing failed")
 
             except Exception as e:
                 print(f"❌ WebSocket error: {e}")
