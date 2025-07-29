@@ -9,7 +9,7 @@ whisper_image = (
     .from_registry("nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu20.04", add_python="3.10")
     .pip_install(
         "faster-whisper",
-        "ctranslate2@git+https://github.com/OpenNMT/CTranslate2.git",
+        "ctranslate2",
         "ffmpeg-python",
         "fastapi",
         "uvicorn",
