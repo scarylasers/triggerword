@@ -20,6 +20,7 @@ whisper_image = (
     .pip_install([
         "numpy<2",
         "torch==2.2.2",
+        "torchaudio==2.2.2",
         "ctranslate2",
         "faster-whisper",
         "ffmpeg-python",
@@ -35,7 +36,6 @@ whisper_image = (
 
 @stub.function(
     image=whisper_image,
-    gpu="A10G",
     timeout=600,
     scaledown_window=300,
 )
@@ -45,7 +45,10 @@ def fastapi_app():
     import torch
 
     print("🔥 CUDA Available:", torch.cuda.is_available())
-    model = WhisperModel("base", compute_type="float16")
+    print("🖥️ Using CPU mode to avoid cuDNN issues")
+    
+    # Use CPU mode explicitly to avoid cuDNN library issues
+    model = WhisperModel("base", device="cpu", compute_type="int8")
 
     @app.websocket("/ws")
     async def transcribe_websocket(websocket: WebSocket):
