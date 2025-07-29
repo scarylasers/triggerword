@@ -9,18 +9,26 @@ stub = modal.App(name="triggerword-whisper")
 app = FastAPI()
 
 whisper_image = (
-    modal.Image
-    .debian_slim(python_version="3.10")
-    .pip_install(
+    modal.Image.debian_slim(python_version="3.10")
+    .apt_install([
+        "ffmpeg",
+        "libgl1-mesa-glx",
+        "libglib2.0-0",
+        "libsm6", "libxext6", "libxrender-dev",
+        "curl", "git"
+    ])
+    .pip_install([
         "torch==2.2.2",
-        "faster-whisper",
         "ctranslate2",
+        "faster-whisper",
         "ffmpeg-python",
         "fastapi",
         "uvicorn",
         "aiofiles",
-    )
-    .apt_install("ffmpeg")
+    ])
+    .env({
+        "PYTHONUNBUFFERED": "1",
+    })
 )
 
 
