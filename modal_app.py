@@ -19,7 +19,7 @@ whisper_image = (
     ])
     .pip_install([
         "numpy<2",
-        "torch==2.2.2", 
+        "torch==2.2.2",
         "torchaudio==2.2.2",
         "openai-whisper",
         "ffmpeg-python",
@@ -45,7 +45,7 @@ def fastapi_app():
     import torch
 
     print("🔥 CUDA Available:", torch.cuda.is_available())
-    
+
     # Try GPU first, fallback to CPU if needed
     try:
         if torch.cuda.is_available():
@@ -64,7 +64,7 @@ def fastapi_app():
     async def transcribe_websocket(websocket: WebSocket):
         await websocket.accept()
         print("🔌 WebSocket connection established")
-        
+
         chunk_buffer = []
         buffer_size = 0
 
@@ -73,7 +73,7 @@ def fastapi_app():
                 # Receive audio chunk from MediaRecorder
                 chunk = await websocket.receive_bytes()
                 print(f"📦 Received audio chunk: {len(chunk)} bytes")
-                
+
                 # Skip very small chunks (likely incomplete)
                 if len(chunk) < 1000:
                     print("⚠️ Skipping small chunk")
@@ -82,22 +82,22 @@ def fastapi_app():
                 # Add chunk to buffer
                 chunk_buffer.append(chunk)
                 buffer_size += len(chunk)
-                
+
                 # Process when we have enough data (about 3-4 chunks for 3-second recording)
                 if len(chunk_buffer) >= 3 or buffer_size >= 120000:  # ~120KB should be enough for 3 seconds
                     print(f"🔄 Processing {len(chunk_buffer)} chunks, total size: {buffer_size} bytes")
-                    
+
                     # Combine all chunks into a single WebM file
                     combined_data = b''.join(chunk_buffer)
-                    
+
                     # Reset buffer
                     chunk_buffer = []
                     buffer_size = 0
-                    
+
                     # Detect audio format by checking file header
                     is_wav = combined_data.startswith(b'RIFF') and b'WAVE' in combined_data[:20]
                     is_webm = combined_data.startswith(b'\x1a\x45\xdf\xa3') or b'webm' in combined_data[:100].lower()
-                    
+
                     if is_wav:
                         file_ext = ".wav"
                         print("🎵 Detected WAV format")
@@ -119,10 +119,10 @@ def fastapi_app():
                         temp_audio.write(combined_data)
 
                     print(f"💾 Saved combined audio to: {audio_path}")
-                    
+
                     # Convert to WAV for Whisper
                     wav_path = audio_path.replace(file_ext, ".wav")
-                    
+
                     # Try different ffmpeg approaches for WebM
                     if file_ext == ".webm":
                         # First try: standard conversion
@@ -134,7 +134,7 @@ def fastapi_app():
                             "-f", "wav",
                             wav_path
                         ], capture_output=True, text=True)
-                        
+
                         # If that fails, try forcing format
                         if result.returncode != 0:
                             print("⚠️ Standard conversion failed, trying forced format...")
@@ -174,7 +174,7 @@ def fastapi_app():
                     try:
                         result = model.transcribe(wav_path)
                         transcription_found = False
-                        
+
                         for segment in result["segments"]:
                             text = segment["text"].strip().lower()
                             if text:  # Only process non-empty transcriptions
@@ -188,10 +188,10 @@ def fastapi_app():
                                     await websocket.send_text("trigger:cute")
                                 else:
                                     await websocket.send_text(text)
-                        
+
                         if not transcription_found:
                             print("🔇 No speech detected in audio chunk")
-                            
+
                     except Exception as e:
                         print(f"❌ Transcription failed: {e}")
                         await websocket.send_text("error: transcription failed")
