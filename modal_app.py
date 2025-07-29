@@ -18,6 +18,7 @@ whisper_image = (
         "curl", "git"
     ])
     .pip_install([
+        "numpy<2",
         "torch==2.2.2",
         "ctranslate2",
         "faster-whisper",
