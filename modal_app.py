@@ -31,7 +31,7 @@ whisper_image = (
         "python-jose[cryptography]==3.3.0",
         "python-dotenv==1.0.0"
     )
-    .copy_local_dir("static", "/root/static")  # Ensures static files are included in the Modal image
+    .add_local_dir("static", local_path="static")  # Ensures static files are included in the Modal image
     .env({
         "PYTHONUNBUFFERED": "1",
         "PYTORCH_ENABLE_MPS_FALLBACK": "1"
@@ -59,12 +59,12 @@ def fastapi_app():
 
     app = FastAPI()
     # Mount static files from the correct location in the Modal container
-    app.mount("/static", StaticFiles(directory="/root/static"), name="static")
+    app.mount("/static", StaticFiles(directory="/static"), name="static")
 
     # Serve main page
     @app.get("/")
     async def serve_index():
-        return FileResponse("/root/static/index.html")
+        return FileResponse("/static/index.html")
 
     # WebSocket endpoint for audio processing
     @app.websocket("/ws")
