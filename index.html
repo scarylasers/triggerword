@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>TriggerWord Tester</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #f0f0f0; }
+    #log { white-space: pre-wrap; font-size: 0.9em; background: #111; color: #0f0; padding: 10px; border-radius: 5px; height: 200px; overflow-y: auto; }
+    #transcription { font-size: 1.2em; margin-top: 20px; padding: 10px; background: white; border: 1px solid #ccc; border-radius: 5px; }
+    select, button { padding: 8px; margin: 5px; }
+  </style>
+</head>
+<body>
+  <h2>🎤 TriggerWord Tester</h2>
+  <label for="audioSource">Choose Audio Source:</label>
+  <select id="audioSource">
+    <option value="mic">🎙️ Mic Only</option>
+    <option value="twitch">📺 Twitch Stream Only</option>
+    <option value="mixed" selected>🔀 Mic + Twitch (Mixed)</option>
+  </select>
+  <br>
+  <button onclick="startTriggerWord()">Start Listening</button>
+  <p><strong>Status:</strong> <span id="status">Idle</span></p>
+
+  <div id="transcription">Transcript will appear here...</div>
+  <h4>Debug Log:</h4>
+  <div id="log"></div>
+
+  <!-- Twitch video must be from your own channel with proper parent domain -->
+  <video id="twitch" src="https://player.twitch.tv/?channel=scarylasers&parent=localhost" autoplay muted style="width: 300px;" hidden></video>
+
+  <script>
+    const wsUrl = "wss://triggerword-whisper--YOURUSERNAME.modal.run/ws";  // ← replace this
+    let ws, ctx, processor;
+
+    function log(msg) {
+      const logEl = document.getElementById("log");
+      logEl.textContent += `[${new Date().toLocaleTimeString()}] ${msg}\n`;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    async function startTriggerWord() {
+      const mode = document.getElementById("audioSource").value;
+      document.getElementById("status").innerText = `Connecting (${mode})`;
+      log(`Selected audio mode: ${mode}`);
+
+      try {
+        ctx = new AudioContext();
+        const mixDest = ctx.createMediaStreamDestination();
+
+        if (mode === "mic" || mode === "mixed") {
+          const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const micSource = ctx.createMediaStreamSource(mic);
+          micSource.connect(mixDest);
+          log("✅ Microphone connected.");
+        }
+
+        if (mode === "twitch" || mode === "mixed") {
+          const twitchStream = document.getElementById("twitch").captureStream();
+          const twitchSource = ctx.createMediaStreamSource(twitchStream);
+          twitchSource.connect(mixDest);
+          log("✅ Twitch stream audio connected.");
+        }
+
+        const finalStream = mixDest.stream;
+        const audioSource = ctx.createMediaStreamSource(finalStream);
+
+        processor = ctx.createScriptProcessor(2048, 1, 1);
+        audioSource.connect(processor);
+        processor.connect(ctx.destination);
+
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          document.getElementById("status").innerText = "Connected";
+          log("🌐 WebSocket connected.");
+        };
+
+        ws.onmessage = (e) => {
+          const msg = e.data.trim();
+          log(`📨 Received: ${msg}`);
+
+          if (msg.startsWith("trigger:")) {
+            const trigger = msg.split(":")[1];
+            if (trigger === "letsgo") new Audio("letsgo.mp3").play();
+            if (trigger === "cute") new Audio("cute.mp3").play();
+          } else {
+            document.getElementById("transcription").innerText = msg;
+          }
+        };
+
+        ws.onerror = (e) => {
+          log("❌ WebSocket error: " + e.message);
+        };
+
+        ws.onclose = () => {
+          log("⚠️ WebSocket closed.");
+          document.getElementById("status").innerText = "Disconnected";
+        };
+
+        processor.onaudioprocess = (e) => {
+          const input = e.inputBuffer.getChannelData(0);
+          const buffer = new Int16Array(input.length);
+          for (let i = 0; i < input.length; i++) {
+            buffer[i] = input[i] * 32767;
+          }
+
+          if (ws.readyState === 1) {
+            ws.send(buffer.buffer);
+            log(`📤 Sent audio chunk (${buffer.length} samples)`);
+          } else {
+            log("⚠️ WebSocket not ready.");
+          }
+        };
+      } catch (err) {
+        log("❌ Error initializing audio: " + err.message);
+        document.getElementById("status").innerText = "Error";
+      }
+    }
+  </script>
+</body>
+</html>
