@@ -1,51 +1,68 @@
 import modal
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, HTTPException, Request
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
 import tempfile
 import subprocess
 import os
 import io
 import numpy as np
+from typing import Optional
+import uvicorn
 
 stub = modal.App(name="triggerword-whisper")
 app = FastAPI()
 
+# Mount static files directory
+app.mount("/static", StaticFiles(directory="/root/static"), name="static")  # Use /root/static for Modal deployment
+
+# Initialize templates
+try:
+    templates = Jinja2Templates(directory="templates")
+except:
+    os.makedirs("templates", exist_ok=True)
+    templates = Jinja2Templates(directory="templates")
+
 whisper_image = (
     modal.Image.debian_slim(python_version="3.10")
     .apt_install([
-        "ffmpeg",
-        "libgl1-mesa-glx",
-        "libglib2.0-0",
-        "libsm6", "libxext6", "libxrender-dev",
-        "curl", "git", "wget"
+        "ffmpeg", "lame"
     ])
-    .pip_install([
-        "numpy<2",
-        "torch==2.2.2",
-        "torchaudio==2.2.2",
-        "openai-whisper",
-        "ffmpeg-python",
-        "fastapi",
-        "uvicorn",
-        "aiofiles",
-        "pydub",
-    ])
+    .pip_install(
+        "openai-whisper==20231117",
+        "pydub==0.25.1",
+        "ffmpeg-python==0.2.0",
+        "fastapi==0.104.1",
+        "uvicorn==0.24.0",
+        "aiofiles==23.2.1",
+        "python-multipart==0.0.6",
+        "python-jose[cryptography]==3.3.0",
+        "python-dotenv==1.0.0"
+    )
+    .copy_local_dir("static", "/root/static")  # Ensures static files are included in the Modal image
     .env({
         "PYTHONUNBUFFERED": "1",
+        "PYTORCH_ENABLE_MPS_FALLBACK": "1"
     })
 )
 
 
 @stub.function(
     image=whisper_image,
-    gpu="T4",  # Use cheaper T4 GPU instead of A10G
-    timeout=300,  # Shorter timeout for cost savings
-    scaledown_window=60,  # Faster scaledown for cost savings
+    gpu="T4",
+    timeout=300,
+    scaledown_window=60,
+    allow_concurrent_inputs=100,
 )
 @modal.asgi_app()
 def fastapi_app():
     import whisper
     import torch
     from pydub import AudioSegment
+    import wave
+    import contextlib
+    import json
 
     print("🔥 CUDA Available:", torch.cuda.is_available())
 
@@ -81,131 +98,97 @@ def fastapi_app():
             print(f"❌ Transcription error: {e}")
             return None
 
+    def wav_to_text(self, audio_path: str) -> Optional[str]:
+        """Transcribe audio file using Whisper"""
+        try:
+            # Load audio and pad/trim it to fit 30 seconds
+            audio = whisper.load_audio(audio_path)
+            audio = whisper.pad_or_trim(audio)
+            
+            # Make log-Mel spectrogram and move to the same device as model
+            mel = whisper.log_mel_spectrogram(audio).to(self.model.device)
+            
+            # Detect the spoken language
+            _, probs = self.model.detect_language(mel)
+            language = max(probs, key=probs.get)
+            
+            # Decode the audio
+            options = whisper.DecodingOptions(fp16=torch.cuda.is_available())
+            result = whisper.decode(self.model, mel, options)
+            
+            return result.text.strip() if result.text else None
+            
+        except Exception as e:
+            print(f"Error in transcription: {e}")
+            return None
+
+    @app.get("/", response_class=HTMLResponse)
+    async def read_root(request: Request):
+        return """
+        <!DOCTYPE html>
+        <html>
+            <head>
+                <title>Audio Recorder</title>
+                <meta http-equiv="refresh" content="0; url=/static/index.html">
+            </head>
+            <body>
+                <p>Redirecting to <a href="/static/index.html">/static/index.html</a>...</p>
+            </body>
+        </html>
+        """
+
     @app.websocket("/ws")
-    async def transcribe_websocket(websocket: WebSocket):
+    async def websocket_endpoint(websocket: WebSocket):
         await websocket.accept()
         print("🔌 WebSocket connection established")
-
-        chunk_buffer = []
-        buffer_size = 0
-
-        while True:
-            try:
-                # Receive audio chunk from MediaRecorder
-                chunk = await websocket.receive_bytes()
-                print(f"📦 Received audio chunk: {len(chunk)} bytes")
-
-                # Skip very small chunks (likely incomplete)
-                if len(chunk) < 500:  # Lower threshold for smaller files
-                    print("⚠️ Skipping small chunk")
-                    continue
-
-                # Add chunk to buffer
-                chunk_buffer.append(chunk)
-                buffer_size += len(chunk)
-
-                # Process with smaller buffer for faster response (cost vs latency tradeoff)
-                if len(chunk_buffer) >= 2 or buffer_size >= 80000:  # Smaller buffer for faster processing
-                    print(f"🔄 Processing {len(chunk_buffer)} chunks, total size: {buffer_size} bytes")
-
-                    # Combine all chunks into a single file
-                    combined_data = b''.join(chunk_buffer)
-
-                    # Reset buffer
-                    chunk_buffer = []
-                    buffer_size = 0
-
-                    # Try to process with pydub first (more forgiving than ffmpeg)
+        
+        # Initialize Whisper model
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        model = whisper.load_model("tiny", device=device)
+        print(f"✅ Whisper model loaded on {device.upper()}")
+        
+        try:
+            while True:
+                # Receive MP3 data from frontend
+                mp3_data = await websocket.receive_bytes()
+                print(f"📦 Received MP3 chunk: {len(mp3_data)} bytes")
+                
+                # Create temporary files
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as mp3_file, \
+                     tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as wav_file:
+                    
+                    mp3_path = mp3_file.name
+                    wav_path = wav_file.name
+                    
                     try:
-                        # Save raw data to temp file with proper WebM header check
-                        temp_path = None
-                        try:
-                            # Simple check for WebM header (starts with \x1a\x45\xdf\xa3)
-                            if len(combined_data) > 4 and combined_data[0:4] != b'\x1a\x45\xdf\xa3':
-                                print("⚠️ Invalid WebM header detected, attempting to fix...")
-                                # Try to prepend a basic WebM header if missing
-                                webm_header = b'\x1a\x45\xdf\xa3\x01\x00\x00\x00\x00\x00\x00\x1f\x42\x86\x81\x01\x42\x85\x81\x01\x42\x85\x81\x01'
-                                combined_data = webm_header + combined_data
-                            
-                            with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_file:
-                                temp_file.write(combined_data)
-                                temp_path = temp_file.name
-                            
-                            print(f"💾 Saved audio data to: {temp_path}")
-
-                            # Try to load with pydub (more forgiving than ffmpeg)
-                            try:
-                                audio = AudioSegment.from_file(temp_path, format="webm")
-                                print("✅ pydub successfully loaded audio")
-
-                                # Convert to low-quality WAV for cost efficiency
-                                wav_path = temp_path.replace(".webm", ".wav")
-                                # Use very low sample rate for speech recognition (saves bandwidth/processing)
-                                audio = audio.set_frame_rate(8000).set_channels(1)  # 8kHz mono is fine for speech
-                                audio.export(wav_path, format="wav")
-                                print(f"✅ Converted to low-quality WAV (8kHz mono): {wav_path}")
-                                
-                            except Exception as pydub_error:
-                                print(f"⚠️ pydub failed: {pydub_error}, trying ffmpeg...")
-                                raise  # Re-raise to be caught by the outer exception handler
-
-                        except Exception as file_error:
-                            print(f"❌ Error processing audio file: {file_error}")
-                            if temp_path and os.path.exists(temp_path):
-                                try:
-                                    os.remove(temp_path)
-                                except:
-                                    pass
-                            await websocket.send_text("error: failed to process audio data")
+                        # Save MP3 data to file
+                        mp3_file.write(mp3_data)
+                        mp3_file.flush()
+                        
+                        # Convert MP3 to WAV using ffmpeg
+                        cmd = [
+                            "ffmpeg", "-y", "-i", mp3_path,
+                            "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
+                            "-loglevel", "error", wav_path
+                        ]
+                        
+                        result = subprocess.run(cmd, capture_output=True, text=True)
+                        if result.returncode != 0:
+                            print(f"❌ FFmpeg error: {result.stderr}")
+                            await websocket.send_text("error: audio conversion failed")
                             continue
-
-                        except Exception as pydub_error:
-                            print(f"⚠️ pydub failed: {pydub_error}, trying ffmpeg...")
-
-                            # Fallback to ffmpeg with low quality settings
-                            wav_path = temp_path.replace(".webm", ".wav")
-
-                            # Try multiple ffmpeg approaches with cost-optimized settings
-                            ffmpeg_commands = [
-                                # Standard WebM to WAV conversion
-                                ["ffmpeg", "-y", "-v", "quiet", "-i", temp_path, "-c:a", "pcm_s16le", "-ar", "8000", "-ac", "1", "-f", "wav", wav_path],
-                                # Force WebM demuxer with raw audio
-                                ["ffmpeg", "-y", "-v", "quiet", "-f", "webm", "-i", temp_path, "-c:a", "pcm_s16le", "-ar", "8000", "-ac", "1", "-f", "wav", wav_path],
-                                # Try with ignore errors
-                                ["ffmpeg", "-y", "-v", "quiet", "-err_detect", "ignore_err", "-i", temp_path, "-c:a", "pcm_s16le", "-ar", "8000", "-ac", "1", "-f", "wav", wav_path],
-                                # Extended analysis with low quality
-                                ["ffmpeg", "-y", "-v", "quiet", "-analyzeduration", "1000000", "-probesize", "1000000",
-                                 "-i", temp_path, "-c:a", "pcm_s16le", "-ar", "8000", "-ac", "1", "-f", "wav", wav_path],
-                            ]
-
-                            success = False
-                            for cmd in ffmpeg_commands:
-                                result = subprocess.run(cmd, capture_output=True, text=True)
-                                if result.returncode == 0:
-                                    print("✅ ffmpeg conversion successful")
-                                    success = True
-                                    break
-                                else:
-                                    print(f"⚠️ ffmpeg attempt failed: {result.stderr}")
-
-                            if not success:
-                                print("❌ All conversion attempts failed")
-                                await websocket.send_text("error: audio conversion failed")
-                                try:
-                                    os.remove(temp_path)
-                                except:
-                                    pass
-                                continue
-
-                        # Now transcribe using cost-optimized approach
-                        print(f"🎯 Transcribing audio file: {wav_path}")
+                        
+                        print(f"✅ Converted to WAV: {wav_path}")
+                        
+                        # Transcribe audio
+                        print(f"🎤 Transcribing audio...")
                         transcription = wav_to_text(wav_path)
-
-                        if transcription is not None and transcription.strip():
-                            text = transcription.strip().lower()
-                            print(f"🧠 Transcribed: '{text}'")
-
-                            # Check for trigger words (optimized matching)
+                        
+                        if transcription:
+                            print(f"🎤 Transcribed: {transcription}")
+                            
+                            # Check for trigger words
+                            text = transcription.lower()
                             if any(phrase in text for phrase in ["let's go", "lets go", "let go"]):
                                 await websocket.send_text("trigger:letsgo")
                                 print("🎯 Trigger detected: let's go")
@@ -213,28 +196,31 @@ def fastapi_app():
                                 await websocket.send_text("trigger:cute")
                                 print("🎯 Trigger detected: cute")
                             else:
-                                await websocket.send_text(text)
+                                await websocket.send_text(transcription)
                         else:
-                            print("🔇 No speech detected in audio chunk")
-
-                        # Clean up temporary files
-                        try:
-                            os.remove(temp_path)
-                            if os.path.exists(wav_path):
-                                os.remove(wav_path)
-                        except Exception as e:
-                            print(f"⚠️ Failed to clean up files: {e}")
-
+                            print("🔇 No speech detected")
+                            await websocket.send_text("")
+                        
                     except Exception as e:
-                        print(f"❌ Audio processing failed: {e}")
+                        print(f"❌ Error processing audio: {e}")
                         await websocket.send_text("error: audio processing failed")
-
-            except Exception as e:
-                print(f"❌ WebSocket error: {e}")
-                try:
-                    await websocket.send_text(f"error: {str(e)}")
-                except:
-                    break
-                break
+                    
+                    finally:
+                        # Clean up temporary files
+                        for path in [mp3_path, wav_path]:
+                            try:
+                                if os.path.exists(path):
+                                    os.remove(path)
+                            except Exception as e:
+                                print(f"⚠️ Error removing {path}: {e}")
+        
+        except Exception as e:
+            print(f"❌ WebSocket error: {e}")
+            try:
+                await websocket.send_text(f"error: {str(e)}")
+            except:
+                pass
+        
+        print("🔌 WebSocket connection closed")
 
     return app

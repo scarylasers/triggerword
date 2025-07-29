@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Recorder with Trigger Words</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .controls {
+            margin: 20px 0;
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 12px 24px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 10px 5px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        #stopBtn {
+            background-color: #f44336;
+        }
+        #stopBtn:hover {
+            background-color: #d32f2f;
+        }
+        #status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 4px;
+            min-height: 24px;
+        }
+        .recording {
+            background-color: #ffebee;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
+        #transcript {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            min-height: 100px;
+            text-align: left;
+            background-color: white;
+            white-space: pre-wrap;
+        }
+        .trigger {
+            color: #e91e63;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>Audio Recorder with Trigger Words</h1>
+    
+    <div class="controls">
+        <button id="startBtn">Start Recording</button>
+        <button id="stopBtn" disabled>Stop Recording</button>
+    </div>
+    
+    <div id="status">Status: Ready</div>
+    
+    <div>
+        <h3>Transcript:</h3>
+        <div id="transcript">Speak to see the transcription here...</div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const statusDiv = document.getElementById('status');
+        const transcriptDiv = document.getElementById('transcript');
+        
+        // Audio recording variables
+        let mediaRecorder;
+        let audioChunks = [];
+        let socket;
+        let isRecording = false;
+        let silenceTimer;
+        const SILENCE_TIMEOUT = 2000; // 2 seconds of silence before sending
+        
+        // WebSocket connection
+        function connectWebSocket() {
+            // Use wss:// if your server supports HTTPS, otherwise use ws://
+            const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+            const wsUrl = protocol + window.location.host + '/ws';
+            
+            socket = new WebSocket(wsUrl);
+            
+            socket.onopen = () => {
+                console.log('WebSocket connected');
+                updateStatus('Connected to server', 'info');
+            };
+            
+            socket.onmessage = (event) => {
+                const message = event.data;
+                console.log('Message from server:', message);
+                
+                if (message.startsWith('trigger:')) {
+                    const triggerType = message.split(':')[1];
+                    handleTrigger(triggerType);
+                } else if (message.startsWith('error:')) {
+                    updateStatus('Error: ' + message.substring(6), 'error');
+                } else {
+                    updateTranscript(message);
+                }
+            };
+            
+            socket.onclose = () => {
+                console.log('WebSocket disconnected');
+                updateStatus('Disconnected from server', 'warning');
+                
+                // Try to reconnect after 3 seconds
+                setTimeout(connectWebSocket, 3000);
+            };
+            
+            socket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                updateStatus('Connection error', 'error');
+            };
+        }
+        
+        // Initialize WebSocket connection when the page loads
+        connectWebSocket();
+        
+        // Update status display
+        function updateStatus(message, type = 'info') {
+            const statusText = `Status: ${message}`;
+            statusDiv.textContent = statusText;
+            
+            // Clear previous classes
+            statusDiv.className = '';
+            
+            // Add appropriate class based on message type
+            if (type === 'error') {
+                statusDiv.style.color = '#d32f2f';
+            } else if (type === 'success') {
+                statusDiv.style.color = '#388e3c';
+            } else if (type === 'warning') {
+                statusDiv.style.color = '#f57c00';
+            } else {
+                statusDiv.style.color = '#1976d2';
+            }
+        }
+        
+        // Update transcript display
+        function updateTranscript(text) {
+            if (!text.trim()) return;
+            
+            // Add new text to the transcript
+            const textNode = document.createTextNode(text + '\n');
+            transcriptDiv.insertBefore(textNode, transcriptDiv.firstChild);
+            
+            // Scroll to the top to show the latest text
+            transcriptDiv.scrollTop = 0;
+        }
+        
+        // Handle trigger words
+        function handleTrigger(triggerType) {
+            let message = '';
+            
+            switch(triggerType) {
+                case 'letsgo':
+                    message = '🚀 Action triggered: Let\'s go!';
+                    break;
+                case 'cute':
+                    message = '🐶 Action triggered: That\'s cute!';
+                    break;
+                default:
+                    message = `🔔 Unknown trigger: ${triggerType}`;
+            }
+            
+            // Add trigger message to transcript
+            const triggerNode = document.createElement('div');
+            triggerNode.className = 'trigger';
+            triggerNode.textContent = message;
+            transcriptDiv.insertBefore(triggerNode, transcriptDiv.firstChild);
+            transcriptDiv.insertBefore(document.createElement('br'), transcriptDiv.firstChild);
+            
+            // Also show in status
+            updateStatus(message, 'success');
+        }
+        
+        // Start recording
+        async function startRecording() {
+            try {
+                updateStatus('Requesting microphone access...');
+                
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream, {
+                    mimeType: 'audio/webm;codecs=opus',
+                    audioBitsPerSecond: 128000
+                });
+                
+                audioChunks = [];
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                        
+                        // When we have enough data, send it
+                        if (audioChunks.length >= 2) {
+                            sendAudioChunk();
+                        }
+                    }
+                };
+                
+                mediaRecorder.onstop = () => {
+                    // Send any remaining audio data
+                    if (audioChunks.length > 0) {
+                        sendAudioChunk();
+                    }
+                    
+                    // Stop all tracks in the stream
+                    stream.getTracks().forEach(track => track.stop());
+                    
+                    // Clear the silence timer
+                    if (silenceTimer) {
+                        clearTimeout(silenceTimer);
+                        silenceTimer = null;
+                    }
+                    
+                    updateStatus('Recording stopped');
+                    isRecording = false;
+                };
+                
+                // Start recording with 100ms timeslice to get regular chunks
+                mediaRecorder.start(100);
+                isRecording = true;
+                
+                // Start silence detection
+                startSilenceDetection(stream);
+                
+                updateStatus('Recording...', 'success');
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                
+                // Add recording indicator
+                statusDiv.classList.add('recording');
+                
+            } catch (error) {
+                console.error('Error accessing microphone:', error);
+                updateStatus('Error accessing microphone: ' + error.message, 'error');
+            }
+        }
+        
+        // Stop recording
+        function stopRecording() {
+            if (mediaRecorder && isRecording) {
+                mediaRecorder.stop();
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                statusDiv.classList.remove('recording');
+            }
+        }
+        
+        // Send audio chunk to server
+        function sendAudioChunk() {
+            if (audioChunks.length === 0 || !socket || socket.readyState !== WebSocket.OPEN) {
+                return;
+            }
+            
+            // Combine all chunks into one blob
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm;codecs=opus' });
+            
+            // Convert to array buffer and send
+            const reader = new FileReader();
+            reader.onload = () => {
+                if (socket.readyState === WebSocket.OPEN) {
+                    socket.send(reader.result);
+                }
+            };
+            reader.readAsArrayBuffer(audioBlob);
+            
+            // Clear sent chunks
+            audioChunks = [];
+        }
+        
+        // Simple silence detection
+        function startSilenceDetection(stream) {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const analyser = audioContext.createAnalyser();
+            const microphone = audioContext.createMediaStreamSource(stream);
+            const javascriptNode = audioContext.createScriptProcessor(2048, 1, 1);
+            
+            analyser.smoothingTimeConstant = 0.8;
+            analyser.fftSize = 1024;
+            
+            microphone.connect(analyser);
+            analyser.connect(javascriptNode);
+            javascriptNode.connect(audioContext.destination);
+            
+            javascriptNode.onaudioprocess = () => {
+                if (!isRecording) return;
+                
+                const array = new Uint8Array(analyser.frequencyBinCount);
+                analyser.getByteFrequencyData(array);
+                
+                // Calculate average volume
+                const average = array.reduce((a, b) => a + b) / array.length;
+                
+                // If volume is below threshold, start/continue silence timer
+                if (average < 10) { // Adjust this threshold as needed
+                    if (!silenceTimer) {
+                        silenceTimer = setTimeout(() => {
+                            if (isRecording) {
+                                sendAudioChunk();
+                            }
+                        }, SILENCE_TIMEOUT);
+                    }
+                } else {
+                    // Sound detected, clear the silence timer
+                    if (silenceTimer) {
+                        clearTimeout(silenceTimer);
+                        silenceTimer = null;
+                    }
+                }
+            };
+        }
+        
+        // Event listeners
+        startBtn.addEventListener('click', startRecording);
+        stopBtn.addEventListener('click', stopRecording);
+        
+        // Handle page unload
+        window.addEventListener('beforeunload', () => {
+            if (socket) {
+                socket.close();
+            }
+            
+            if (mediaRecorder && isRecording) {
+                mediaRecorder.stop();
+            }
+        });
+    </script>
+</body>
+</html>
