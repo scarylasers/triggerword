@@ -5,10 +5,19 @@ stub = modal.App(name="triggerword-whisper")
 app = FastAPI()
 
 whisper_image = (
-    modal.Image.debian_slim()
+    modal.Image
+    .from_registry("nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu20.04", add_python="3.10")
+    .pip_install(
+        "faster-whisper",
+        "ctranslate2@git+https://github.com/OpenNMT/CTranslate2.git",
+        "ffmpeg-python",
+        "fastapi",
+        "uvicorn",
+        "aiofiles"
+    )
     .apt_install("ffmpeg")
-    .pip_install("faster-whisper", "fastapi", "uvicorn", "ffmpeg-python", "aiofiles")
 )
+
 
 @stub.function(
     image=whisper_image,
@@ -21,7 +30,8 @@ def fastapi_app():
     import tempfile
     import subprocess
     from faster_whisper import WhisperModel
-
+    import torch
+    print("🔥 CUDA Available:", torch.cuda.is_available())  # ✅ check GPU in container
     model = WhisperModel("base", compute_type="float16")
 
     @app.websocket("/ws")
