@@ -78,20 +78,20 @@ def fastapi_app():
             model = whisper.load_model("tiny", device=device)
             print("✅ Whisper model loaded successfully")
             while True:
-                # Receive MP3 data from frontend
-                mp3_data = await websocket.receive_bytes()
-                print(f"📦 Received audio chunk: {len(mp3_data)} bytes")
+                # Receive WebM/Opus data from frontend
+                audio_data = await websocket.receive_bytes()
+                print(f"📦 Received audio chunk: {len(audio_data)} bytes")
                 # Create temporary files
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as mp3_file, \
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as audio_file, \
                      tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as wav_file:
-                    mp3_path = mp3_file.name
+                    audio_path = audio_file.name
                     wav_path = wav_file.name
                     try:
-                        mp3_file.write(mp3_data)
-                        mp3_file.flush()
-                        # Convert MP3 to WAV using ffmpeg
+                        audio_file.write(audio_data)
+                        audio_file.flush()
+                        # Convert WebM/Opus to WAV using ffmpeg
                         cmd = [
-                            "ffmpeg", "-y", "-i", mp3_path,
+                            "ffmpeg", "-y", "-i", audio_path,
                             "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
                             "-loglevel", "error", wav_path
                         ]
@@ -101,18 +101,12 @@ def fastapi_app():
                             await websocket.send_text("error: audio conversion failed")
                             continue
                         print(f"✅ Converted to WAV: {wav_path}")
-                        # Transcribe audio using Whisper
-                        audio = whisper.load_audio(wav_path)
-                        audio = whisper.pad_or_trim(audio)
-                        mel = whisper.log_mel_spectrogram(audio).to(model.device)
-                        _, probs = model.detect_language(mel)
-                        language = max(probs, key=probs.get)
-                        print(f"Detected language: {language}")
-                        options = whisper.DecodingOptions(fp16=torch.cuda.is_available())
-                        result = whisper.decode(model, mel, options)
-                        transcription = result.text.strip() if result.text else ""
+                        # Transcribe audio
+                        print(f"🎤 Transcribing audio...")
+                        transcription = wav_to_text(wav_path)
                         if transcription:
                             print(f"🎤 Transcribed: {transcription}")
+                            # Check for trigger words
                             text = transcription.lower()
                             if any(phrase in text for phrase in ["let's go", "lets go", "let go"]):
                                 await websocket.send_text("trigger:letsgo")
@@ -129,7 +123,7 @@ def fastapi_app():
                         print(f"❌ Error processing audio: {e}")
                         await websocket.send_text("error: audio processing failed")
                     finally:
-                        for path in [mp3_path, wav_path]:
+                        for path in [audio_path, wav_path]:
                             try:
                                 if os.path.exists(path):
                                     os.remove(path)
