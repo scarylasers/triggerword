@@ -1,69 +1,94 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>TriggerWord Tester</title>
-  <style>
-    body { font-family: sans-serif; padding: 20px; background: #f0f0f0; }
-    #log { white-space: pre-wrap; font-size: 0.9em; background: #111; color: #0f0; padding: 10px; border-radius: 5px; height: 200px; overflow-y: auto; }
-    #transcription { font-size: 1.2em; margin-top: 20px; padding: 10px; background: white; border: 1px solid #ccc; border-radius: 5px; }
-    select, button { padding: 8px; margin: 5px; }
-  </style>
+  <title>TriggerWord Listener</title>
 </head>
 <body>
-  <h2>🎤 TriggerWord Tester</h2>
-  <button onclick="startTriggerWord()">Start Listening</button>
-  <p><strong>Status:</strong> <span id="status">Idle</span></p>
+  <h1>🎤 TriggerWord Listening Test</h1>
 
-  <div id="transcription">Transcript will appear here...</div>
-  <h4>Debug Log:</h4>
-  <div id="log"></div>
+  <label for="mic-select">Select Microphone:</label>
+  <select id="mic-select"></select>
+  <br><br>
+
+  <button id="start">Start Listening</button>
+  <button id="stop" disabled>Stop Listening</button>
+
+  <div id="output"></div>
 
   <script>
-    const wsUrl = "wss://scarylasers--triggerword-whisper-fastapi-app-dev.modal.run/ws";
-    let ws;
+    let socket;
+    let mediaRecorder;
+    let audioStream;
 
-    function log(msg) {
-      const logEl = document.getElementById("log");
-      logEl.textContent += `[${new Date().toLocaleTimeString()}] ${msg}\n`;
-      logEl.scrollTop = logEl.scrollHeight;
+    const micSelect = document.getElementById("mic-select");
+    const startBtn = document.getElementById("start");
+    const stopBtn = document.getElementById("stop");
+    const output = document.getElementById("output");
+
+    // Get available audio input devices
+    async function populateMicList() {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const mics = devices.filter(device => device.kind === "audioinput");
+
+      micSelect.innerHTML = "";
+      mics.forEach((mic, index) => {
+        const option = document.createElement("option");
+        option.value = mic.deviceId;
+        option.text = mic.label || `Microphone ${index + 1}`;
+        micSelect.appendChild(option);
+      });
     }
 
-    async function startTriggerWord() {
-      document.getElementById("status").innerText = "Connecting...";
-      ws = new WebSocket(wsUrl);
-      ws.binaryType = "arraybuffer";
+    // Ask for mic permissions early so labels show up
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(populateMicList);
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+    startBtn.onclick = async () => {
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      output.innerText = "🎧 Listening...";
 
-      ws.onopen = () => {
-        document.getElementById("status").innerText = "Connected";
-        log("🌐 WebSocket connected");
-        recorder.start(1000); // 1s chunks
-        log("🎙️ MediaRecorder started");
+      const selectedMicId = micSelect.value;
+      audioStream = await navigator.mediaDevices.getUserMedia({
+        audio: { deviceId: selectedMicId ? { exact: selectedMicId } : undefined }
+      });
+
+      mediaRecorder = new MediaRecorder(audioStream, { mimeType: "audio/webm" });
+      socket = new WebSocket("wss://scarylasers--triggerword-whisper-fastapi-app.modal.run/ws");
+
+      socket.onmessage = (event) => {
+        const text = event.data;
+        console.log("🔊", text);
+        output.innerText = "🧠 " + text;
       };
 
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0 && ws.readyState === 1) {
-          ws.send(e.data);
-          log("📤 Sent audio blob to Modal");
+      socket.onerror = (e) => {
+        console.error("❌ WebSocket error:", e);
+        output.innerText = "WebSocket error. Check console.";
+        stopListening();
+      };
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0 && socket.readyState === WebSocket.OPEN) {
+          socket.send(e.data);
         }
       };
 
-      ws.onmessage = (e) => {
-        const msg = e.data.trim();
-        log(`📨 Received: ${msg}`);
+      mediaRecorder.start(250);
+    };
 
-        if (msg.startsWith("trigger:")) {
-          const trigger = msg.split(":")[1];
-          if (trigger === "letsgo") new Audio("letsgo.mp3").play();
-          if (trigger === "cute") new Audio("cute.mp3").play();
-        } else {
-          document.getElementById("transcription").innerText = msg;
-        }
-      };
+    stopBtn.onclick = () => stopListening();
 
-      ws.onerror = (err) => log("❌ WebSocket error: " + err.message);
+    function stopListening() {
+      if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+      if (audioStream) {
+        audioStream.getTracks().forEach(track => track.stop());
+        audioStream = null;
+      }
+      if (socket && socket.readyState === WebSocket.OPEN) socket.close();
+
+      output.innerText = "🛑 Stopped listening.";
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
     }
   </script>
 </body>
