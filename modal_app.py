@@ -140,46 +140,7 @@ def fastapi_app():
         print("🔌 WebSocket connection closed")
 
     return app
-            return None
 
-    def wav_to_text(self, audio_path: str) -> Optional[str]:
-        """Transcribe audio file using Whisper"""
-        try:
-            # Load audio and pad/trim it to fit 30 seconds
-            audio = whisper.load_audio(audio_path)
-            audio = whisper.pad_or_trim(audio)
-            
-            # Make log-Mel spectrogram and move to the same device as model
-            mel = whisper.log_mel_spectrogram(audio).to(self.model.device)
-            
-            # Detect the spoken language
-            _, probs = self.model.detect_language(mel)
-            language = max(probs, key=probs.get)
-            
-            # Decode the audio
-            options = whisper.DecodingOptions(fp16=torch.cuda.is_available())
-            result = whisper.decode(self.model, mel, options)
-            
-            return result.text.strip() if result.text else None
-            
-        except Exception as e:
-            print(f"Error in transcription: {e}")
-            return None
-
-    @app.get("/", response_class=HTMLResponse)
-    async def read_root(request: Request):
-        return """
-        <!DOCTYPE html>
-        <html>
-            <head>
-                <title>Audio Recorder</title>
-                <meta http-equiv="refresh" content="0; url=/static/index.html">
-            </head>
-            <body>
-                <p>Redirecting to <a href="/static/index.html">/static/index.html</a>...</p>
-            </body>
-        </html>
-        """
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket):
