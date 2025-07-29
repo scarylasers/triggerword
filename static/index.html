@@ -102,11 +102,8 @@
         
         // Audio recording variables
         let mediaRecorder;
-        let audioChunks = [];
         let socket;
         let isRecording = false;
-        let silenceTimer;
-        const SILENCE_TIMEOUT = 2000; // 2 seconds of silence before sending
         
         // WebSocket connection
         function connectWebSocket() {
@@ -214,65 +211,36 @@
         async function startRecording() {
             try {
                 updateStatus('Requesting microphone access...');
-                
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 mediaRecorder = new MediaRecorder(stream, {
                     mimeType: 'audio/webm;codecs=opus',
                     audioBitsPerSecond: 128000
                 });
-                
-                audioChunks = [];
-                
+
                 mediaRecorder.ondataavailable = (event) => {
-                    if (event.data.size > 0) {
-                        audioChunks.push(event.data);
-                        
-                        // When we have enough data, send it
-                        if (audioChunks.length >= 2) {
-                            sendAudioChunk();
-                        }
+                    if (event.data.size > 0 && socket && socket.readyState === WebSocket.OPEN) {
+                        event.data.arrayBuffer().then(buffer => socket.send(buffer));
                     }
                 };
-                
+
                 mediaRecorder.onstop = () => {
-                    // Send any remaining audio data
-                    if (audioChunks.length > 0) {
-                        sendAudioChunk();
-                    }
-                    
-                    // Stop all tracks in the stream
                     stream.getTracks().forEach(track => track.stop());
-                    
-                    // Clear the silence timer
-                    if (silenceTimer) {
-                        clearTimeout(silenceTimer);
-                        silenceTimer = null;
-                    }
-                    
                     updateStatus('Recording stopped');
                     isRecording = false;
                 };
-                
-                // Start recording with 100ms timeslice to get regular chunks
-                mediaRecorder.start(100);
+
+                mediaRecorder.start(1000); // 1s chunks
                 isRecording = true;
-                
-                // Start silence detection
-                startSilenceDetection(stream);
-                
                 updateStatus('Recording...', 'success');
                 startBtn.disabled = true;
                 stopBtn.disabled = false;
-                
-                // Add recording indicator
                 statusDiv.classList.add('recording');
-                
             } catch (error) {
                 console.error('Error accessing microphone:', error);
                 updateStatus('Error accessing microphone: ' + error.message, 'error');
             }
         }
-        
+
         // Stop recording
         function stopRecording() {
             if (mediaRecorder && isRecording) {
@@ -282,81 +250,16 @@
                 statusDiv.classList.remove('recording');
             }
         }
-        
-        // Send audio chunk to server
-        function sendAudioChunk() {
-            if (audioChunks.length === 0 || !socket || socket.readyState !== WebSocket.OPEN) {
-                return;
-            }
-            
-            // Combine all chunks into one blob
-            const audioBlob = new Blob(audioChunks, { type: 'audio/webm;codecs=opus' });
-            
-            // Convert to array buffer and send
-            const reader = new FileReader();
-            reader.onload = () => {
-                if (socket.readyState === WebSocket.OPEN) {
-                    socket.send(reader.result);
-                }
-            };
-            reader.readAsArrayBuffer(audioBlob);
-            
-            // Clear sent chunks
-            audioChunks = [];
-        }
-        
-        // Simple silence detection
-        function startSilenceDetection(stream) {
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const analyser = audioContext.createAnalyser();
-            const microphone = audioContext.createMediaStreamSource(stream);
-            const javascriptNode = audioContext.createScriptProcessor(2048, 1, 1);
-            
-            analyser.smoothingTimeConstant = 0.8;
-            analyser.fftSize = 1024;
-            
-            microphone.connect(analyser);
-            analyser.connect(javascriptNode);
-            javascriptNode.connect(audioContext.destination);
-            
-            javascriptNode.onaudioprocess = () => {
-                if (!isRecording) return;
-                
-                const array = new Uint8Array(analyser.frequencyBinCount);
-                analyser.getByteFrequencyData(array);
-                
-                // Calculate average volume
-                const average = array.reduce((a, b) => a + b) / array.length;
-                
-                // If volume is below threshold, start/continue silence timer
-                if (average < 10) { // Adjust this threshold as needed
-                    if (!silenceTimer) {
-                        silenceTimer = setTimeout(() => {
-                            if (isRecording) {
-                                sendAudioChunk();
-                            }
-                        }, SILENCE_TIMEOUT);
-                    }
-                } else {
-                    // Sound detected, clear the silence timer
-                    if (silenceTimer) {
-                        clearTimeout(silenceTimer);
-                        silenceTimer = null;
-                    }
-                }
-            };
-        }
-        
+
         // Event listeners
         startBtn.addEventListener('click', startRecording);
         stopBtn.addEventListener('click', stopRecording);
-        
+
         // Handle page unload
         window.addEventListener('beforeunload', () => {
             if (socket) {
                 socket.close();
             }
-            
             if (mediaRecorder && isRecording) {
                 mediaRecorder.stop();
             }
