@@ -208,37 +208,66 @@
         }
         
         // Start recording
+        let stream;
+        let recordingInterval;
+        const RECORD_SECONDS = 2;
+
         async function startRecording() {
             try {
                 updateStatus('Requesting microphone access...');
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorder = new MediaRecorder(stream, {
-                    mimeType: 'audio/webm;codecs=opus',
-                    audioBitsPerSecond: 128000
-                });
-
-                mediaRecorder.ondataavailable = (event) => {
-                    if (event.data.size > 0 && socket && socket.readyState === WebSocket.OPEN) {
-                        event.data.arrayBuffer().then(buffer => socket.send(buffer));
-                    }
-                };
-
-                mediaRecorder.onstop = () => {
-                    stream.getTracks().forEach(track => track.stop());
-                    updateStatus('Recording stopped');
-                    isRecording = false;
-                };
-
-                mediaRecorder.start(1000); // 1s chunks
-                isRecording = true;
-                updateStatus('Recording...', 'success');
+                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 startBtn.disabled = true;
                 stopBtn.disabled = false;
                 statusDiv.classList.add('recording');
+                isRecording = true;
+                updateStatus('Recording...', 'success');
+                recordChunkLoop();
             } catch (error) {
                 console.error('Error accessing microphone:', error);
                 updateStatus('Error accessing microphone: ' + error.message, 'error');
             }
+        }
+
+        function recordChunkLoop() {
+            if (!isRecording) return;
+            mediaRecorder = new MediaRecorder(stream, {
+                mimeType: 'audio/webm;codecs=opus',
+                audioBitsPerSecond: 128000
+            });
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0 && socket && socket.readyState === WebSocket.OPEN) {
+                    event.data.arrayBuffer().then(buffer => socket.send(buffer));
+                }
+            };
+            mediaRecorder.onstop = () => {
+                if (isRecording) {
+                    // Start next chunk
+                    recordingInterval = setTimeout(recordChunkLoop, 100);
+                }
+            };
+            mediaRecorder.start();
+            setTimeout(() => {
+                if (mediaRecorder && mediaRecorder.state === 'recording') {
+                    mediaRecorder.stop();
+                }
+            }, RECORD_SECONDS * 1000);
+        }
+
+        function stopRecording() {
+            isRecording = false;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            statusDiv.classList.remove('recording');
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+            }
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            if (recordingInterval) {
+                clearTimeout(recordingInterval);
+            }
+            updateStatus('Recording stopped');
         }
 
         // Stop recording
