@@ -65,74 +65,81 @@ def fastapi_app():
         await websocket.accept()
         print("🔌 WebSocket connection established")
 
+        import struct
+        PCM_SAMPLE_RATE = 16000
+        PCM_SAMPLE_WIDTH = 2  # bytes (16-bit)
+        PCM_CHANNELS = 1
+        PCM_CHUNK_SECONDS = 2
+        PCM_CHUNK_SIZE = PCM_SAMPLE_RATE * PCM_SAMPLE_WIDTH * PCM_CHANNELS * PCM_CHUNK_SECONDS  # 32000 bytes for 2 seconds
+        pcm_buffer = bytearray()
+
+        def write_wav(path, pcm_bytes, sample_rate=16000, num_channels=1):
+            # Write a simple PCM WAV header + data
+            num_samples = len(pcm_bytes) // 2
+            datasize = len(pcm_bytes)
+            with open(path, 'wb') as f:
+                # RIFF header
+                f.write(b'RIFF')
+                f.write(struct.pack('<I', 36 + datasize))
+                f.write(b'WAVE')
+                # fmt chunk
+                f.write(b'fmt ')
+                f.write(struct.pack('<I', 16))  # chunk size
+                f.write(struct.pack('<H', 1))  # PCM format
+                f.write(struct.pack('<H', num_channels))
+                f.write(struct.pack('<I', sample_rate))
+                f.write(struct.pack('<I', sample_rate * num_channels * 2))  # byte rate
+                f.write(struct.pack('<H', num_channels * 2))  # block align
+                f.write(struct.pack('<H', 16))  # bits per sample
+                # data chunk
+                f.write(b'data')
+                f.write(struct.pack('<I', datasize))
+                f.write(pcm_bytes)
+
         while True:
             try:
                 chunk = await websocket.receive_bytes()
-                print(f"📦 Received audio chunk: {len(chunk)} bytes")
+                print(f"📦 Received PCM chunk: {len(chunk)} bytes")
 
-                if len(chunk) < 1000:
-                    print("⚠️ Skipping small chunk")
+                if len(chunk) < 100:
+                    print("⚠️ Skipping small PCM chunk")
                     continue
+                pcm_buffer.extend(chunk)
 
-                # Save chunk as a temp WebM file
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_audio:
-                    audio_path = temp_audio.name
-                    temp_audio.write(chunk)
-
-                print(f"💾 Saved audio to: {audio_path}")
-
-                # Convert to WAV for Whisper
-                wav_path = audio_path.replace(".webm", ".wav")
-                result = subprocess.run([
-                    "ffmpeg", "-y", "-v", "quiet",
-                    "-i", audio_path,
-                    "-ar", "16000",
-                    "-ac", "1",
-                    "-f", "wav",
-                    wav_path
-                ], capture_output=True, text=True)
-
-                if result.returncode != 0:
-                    print(f"❌ ffmpeg conversion failed: {result.stderr}")
-                    await websocket.send_text("error: audio conversion failed")
-                    os.remove(audio_path)
-                    continue
-
-                print(f"✅ Audio ready for transcription: {wav_path}")
-
-                # Transcribe the audio
-                try:
-                    result = model.transcribe(wav_path)
-                    transcription_found = False
-
-                    for segment in result["segments"]:
-                        text = segment["text"].strip().lower()
-                        if text:
-                            transcription_found = True
-                            print(f"🧠 Transcribed: '{text}'")
-                            # Check for trigger words
-                            if "let's go" in text:
-                                await websocket.send_text("trigger:letsgo")
-                            elif "cute" in text:
-                                await websocket.send_text("trigger:cute")
-                            else:
-                                await websocket.send_text(text)
-
-                    if not transcription_found:
-                        print("🔇 No speech detected in audio chunk")
-
-                except Exception as e:
-                    print(f"❌ Transcription failed: {e}")
-                    await websocket.send_text("error: transcription failed")
-
-                # Clean up temporary files
-                try:
-                    os.remove(audio_path)
-                    if os.path.exists(wav_path):
+                # When buffer reaches chunk size (e.g., 2 seconds), process
+                while len(pcm_buffer) >= PCM_CHUNK_SIZE:
+                    process_bytes = pcm_buffer[:PCM_CHUNK_SIZE]
+                    pcm_buffer = pcm_buffer[PCM_CHUNK_SIZE:]
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_wav:
+                        wav_path = temp_wav.name
+                        write_wav(wav_path, process_bytes, sample_rate=PCM_SAMPLE_RATE, num_channels=PCM_CHANNELS)
+                    print(f"💾 Saved WAV chunk to: {wav_path}")
+                    # Transcribe the audio
+                    try:
+                        result = model.transcribe(wav_path)
+                        transcription_found = False
+                        for segment in result["segments"]:
+                            text = segment["text"].strip().lower()
+                            if text:
+                                transcription_found = True
+                                print(f"🧠 Transcribed: '{text}'")
+                                # Check for trigger words
+                                if "let's go" in text:
+                                    await websocket.send_text("trigger:letsgo")
+                                elif "cute" in text:
+                                    await websocket.send_text("trigger:cute")
+                                else:
+                                    await websocket.send_text(text)
+                        if not transcription_found:
+                            print("🔇 No speech detected in PCM chunk")
+                    except Exception as e:
+                        print(f"❌ Transcription failed: {e}")
+                        await websocket.send_text("error: transcription failed")
+                    # Clean up temp WAV
+                    try:
                         os.remove(wav_path)
-                except Exception as e:
-                    print(f"⚠️ Failed to clean up files: {e}")
-
+                    except Exception as e:
+                        print(f"⚠️ Failed to clean up WAV: {e}")
             except Exception as e:
                 print(f"❌ WebSocket error: {e}")
                 try:
