@@ -14,16 +14,20 @@
   <button id="stop" disabled>Stop Listening</button>
 
   <div id="output"></div>
+  <canvas id="mic-meter" width="300" height="30" style="border: 1px solid #ccc; margin-top: 10px;"></canvas>
 
   <script>
     let socket;
     let mediaRecorder;
     let audioStream;
+    let audioContext, analyser, micSource, animationId;
 
     const micSelect = document.getElementById("mic-select");
     const startBtn = document.getElementById("start");
     const stopBtn = document.getElementById("stop");
     const output = document.getElementById("output");
+    const canvas = document.getElementById("mic-meter");
+    const canvasCtx = canvas.getContext("2d");
 
     // Get available audio input devices
     async function populateMicList() {
@@ -51,6 +55,27 @@
       audioStream = await navigator.mediaDevices.getUserMedia({
         audio: { deviceId: selectedMicId ? { exact: selectedMicId } : undefined }
       });
+
+      // Setup Web Audio API for mic level meter
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      micSource = audioContext.createMediaStreamSource(audioStream);
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      micSource.connect(analyser);
+
+      function drawMeter() {
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        analyser.getByteFrequencyData(dataArray);
+        const avg = dataArray.reduce((a, b) => a + b, 0) / bufferLength;
+
+        canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+        canvasCtx.fillStyle = "limegreen";
+        canvasCtx.fillRect(0, 0, avg * 3, canvas.height);
+
+        animationId = requestAnimationFrame(drawMeter);
+      }
+      drawMeter();
 
       mediaRecorder = new MediaRecorder(audioStream, { mimeType: "audio/webm" });
       socket = new WebSocket("wss://scarylasers--triggerword-whisper-fastapi-app.modal.run/ws");
@@ -86,6 +111,13 @@
       }
       if (socket && socket.readyState === WebSocket.OPEN) socket.close();
 
+      if (audioContext) {
+        audioContext.close();
+        audioContext = null;
+      }
+      cancelAnimationFrame(animationId);
+
+      canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
       output.innerText = "🛑 Stopped listening.";
       startBtn.disabled = false;
       stopBtn.disabled = true;

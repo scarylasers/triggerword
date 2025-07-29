@@ -1,14 +1,18 @@
 import modal
 from fastapi import FastAPI, WebSocket
+import tempfile
+import subprocess
+import os
+import aiofiles
 
 stub = modal.App(name="triggerword-whisper")
 app = FastAPI()
 
 whisper_image = (
     modal.Image
-    .debian_slim(python_version="3.10")  # ✅ Better default compatibility
+    .debian_slim(python_version="3.10")
     .pip_install(
-        "torch==2.2.2",  # ✅ Works with Modal GPU runtime
+        "torch==2.2.2",
         "faster-whisper",
         "ctranslate2",
         "ffmpeg-python",
@@ -28,11 +32,8 @@ whisper_image = (
 )
 @modal.asgi_app()
 def fastapi_app():
-    import tempfile
-    import subprocess
     from faster_whisper import WhisperModel
     import torch
-    import os
 
     print("🔥 CUDA Available:", torch.cuda.is_available())
     model = WhisperModel("base", compute_type="float16")
@@ -47,32 +48,38 @@ def fastapi_app():
                 chunk = await websocket.receive_bytes()
                 buffer += chunk
 
-                # Analyze after 5 seconds of audio (~128kb per second mono OPUS)
                 if len(buffer) >= 64000:
-                    # Save incoming blob as webm
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as f:
-                        f.write(buffer)
-                        temp_webm_path = f.name
+                    async with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_webm:
+                        webm_path = temp_webm.name
+                    async with aiofiles.open(webm_path, "wb") as f:
+                        await f.write(buffer)
 
-                    temp_wav_path = temp_webm_path.replace(".webm", ".wav")
+                    wav_path = webm_path.replace(".webm", ".wav")
 
-                    # Convert to wav with ffmpeg
                     try:
-                        subprocess.run([
+                        result = subprocess.run([
                             "ffmpeg", "-y",
-                            "-i", temp_webm_path,
-                            "-ar", "16000", "-ac", "1",
-                            "-f", "wav", temp_wav_path
-                        ], check=True)
-                    except subprocess.CalledProcessError as e:
-                        print(f"❌ ffmpeg failed: {e}")
-                        await websocket.send_text("error: audio conversion failed")
+                            "-i", webm_path,
+                            "-ar", "16000",
+                            "-ac", "1",
+                            "-f", "wav",
+                            wav_path
+                        ], capture_output=True, text=True)
+
+                        if result.returncode != 0:
+                            print(f"❌ ffmpeg stderr:\n{result.stderr}")
+                            await websocket.send_text("error: audio conversion failed")
+                            buffer = b""
+                            continue
+
+                    except Exception as e:
+                        print(f"❌ ffmpeg crash: {e}")
+                        await websocket.send_text("error: ffmpeg crashed")
                         buffer = b""
                         continue
 
-                    # Transcribe
                     try:
-                        segments, _ = model.transcribe(temp_wav_path, vad_filter=True)
+                        segments, _ = model.transcribe(wav_path, vad_filter=True)
                         for segment in segments:
                             text = segment.text.strip().lower()
                             print(f"🧠 Transcribed: {text}")
@@ -87,7 +94,10 @@ def fastapi_app():
                         print(f"❌ Transcription failed: {e}")
                         await websocket.send_text("error: transcription failed")
 
-                    # Clear buffer for next chunk
+                    finally:
+                        os.remove(webm_path)
+                        os.remove(wav_path)
+
                     buffer = b""
 
             except Exception as e:
