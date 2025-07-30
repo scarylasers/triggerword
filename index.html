@@ -416,23 +416,8 @@ const saveTriggersBtn = document.getElementById('saveTriggers');
 const loadTriggersBtn = document.getElementById('loadTriggers');
 
 function renderTriggerList() {
-    triggerList.innerHTML = `
-        <table>
-            <thead>
-                <tr>
-                    <th>Word</th>
-                    <th>Sound</th>
-                    <th>Cooldown</th>
-                    <th>Status</th>
-                    <th>Play</th>
-                    <th>Remove</th>
-                </tr>
-            </thead>
-            <tbody id="trigger-list-body">
-            </tbody>
-        </table>
-    `;
     const tbody = document.getElementById('trigger-list-body');
+    tbody.innerHTML = '';
     triggers.forEach((t, idx) => {
         const row = document.createElement('tr');
         // Word
@@ -465,6 +450,22 @@ function renderTriggerList() {
         };
         playCell.appendChild(playBtn);
         row.appendChild(playCell);
+        // Remove button
+        const removeCell = document.createElement('td');
+        const removeBtn = document.createElement('button');
+        removeBtn.textContent = '❌';
+        removeBtn.onclick = async () => {
+            triggers.splice(idx, 1);
+            await deleteAudioFromDB(t.word);
+            saveTriggersToStorage();
+            renderTriggerList();
+        };
+        removeCell.appendChild(removeBtn);
+        row.appendChild(removeCell);
+        tbody.appendChild(row);
+    });
+}
+
         // Remove button
         const removeCell = document.createElement('td');
         const removeBtn = document.createElement('button');
