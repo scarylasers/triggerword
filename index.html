@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <link rel="stylesheet" href="style.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TriggerWord</title>
     <style>
@@ -76,43 +77,141 @@
             color: #e91e63;
             font-weight: bold;
         }
+        .cool-card {
+            background: #fafbfc;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px #0001;
+            padding: 18px 20px 12px 20px;
+            margin-bottom: 20px;
+            border: 1px solid #e0e0e0;
+        }
+        details[open] > summary {
+            border-bottom: 1px solid #e0e0e0;
+        }
+        details > summary {
+            font-size: 1.15em;
+            font-weight: bold;
+            cursor: pointer;
+            outline: none;
+            padding: 8px 0;
+            margin-bottom: 4px;
+        }
+        details[open] > summary {
+            color: #1976d2;
+        }
+        .cooldown-msg {
+            background: #2196f3;
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .triggered-msg {
+            background: orange;
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .sound-chip {
+            display: inline-flex;
+            align-items: center;
+            background: #e3f2fd;
+            border-radius: 16px;
+            padding: 2px 8px 2px 4px;
+            margin: 2px 6px 2px 0;
+            font-size: 0.97em;
+        }
+        .sound-chip button {
+            background: none;
+            border: none;
+            padding: 0 2px;
+            margin: 0 2px;
+            cursor: pointer;
+            font-size: 1em;
+            line-height: 1;
+            color: #1976d2;
+        }
+        .sound-chip button:focus {
+            outline: 1px solid #1976d2;
+        }
+        .add-sound-icon-btn {
+            background: #1976d2;
+            color: #fff;
+            border: none;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1em;
+            margin-left: 4px;
+            cursor: pointer;
+        }
+        .add-sound-icon-btn:focus {
+            outline: 1px solid #1976d2;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
     </style>
 </head>
 <body>
     <h1>TriggerWord</h1>
     
     <div class="controls">
+        <label for="audioSource" style="font-weight:600;margin-right:8px;">Audio Input Device:</label>
+        <select id="audioSource" style="margin-right:18px;"></select>
+        <span id="audioDeviceMsg" style="color:#c62828;font-size:0.97em;margin-right:12px;display:none;"></span>
         <button id="startBtn">Listen for triggers</button>
         <button id="stopBtn" disabled>Stop listening</button>
     </div>
 
     <!-- Trigger setup UI -->
     <div id="trigger-setup">
-        <h3>Trigger Words & Sounds</h3>
-        <form id="triggerForm">
-            <input type="text" id="triggerWord" placeholder="Trigger word/phrase" required>
-            <input type="file" id="triggerSound" accept="audio/*">
-            <input type="number" id="triggerCooldown" min="1" value="10" style="width:60px;" required> <label for="triggerCooldown">Cooldown (s)</label>
-            <button type="submit">Add Trigger</button>
-        </form>
-        <table id="triggerTable" style="width:100%; border-collapse:collapse; margin-top:10px;">
-            <thead>
-                <tr>
-                    <th style="border-bottom:1px solid #ccc;">Word</th>
-                    <th style="border-bottom:1px solid #ccc;">Sound</th>
-                    <th style="border-bottom:1px solid #ccc;">Cooldown (s)</th>
-                    <th style="border-bottom:1px solid #ccc;">Status</th>
-                    <th style="border-bottom:1px solid #ccc;">Play</th>
-                    <th style="border-bottom:1px solid #ccc;">Remove</th>
-                </tr>
-            </thead>
-            <tbody id="triggerList"></tbody>
-        </table>
-        <button id="saveTriggers">Save Setup</button>
-        <button id="loadTriggers">Load Setup</button>
-        <button id="downloadSetup">Download Setup</button>
-        <input type="file" id="importSetup" accept="application/json" style="display:none;">
-        <button id="importSetupBtn">Import Setup</button>
+        <details id="triggerSetupPanel" open class="cool-card">
+            <summary>🎛️ Trigger Setup</summary>
+            <div>
+                <form id="triggerForm">
+                    <input type="text" id="triggerWord" placeholder="Trigger word/phrase" required>
+                    <input type="file" id="triggerSound" accept="audio/*" multiple>
+                    <input type="number" id="triggerCooldown" min="1" value="10" style="width:60px;" required> 
+                    <label for="triggerCooldown">Cooldown (s)</label>
+                    <button type="submit">Add Trigger</button>
+                </form>
+                <table id="triggerTable">
+                    <thead>
+                        <tr>
+                            <th>Word</th>
+                            <th>Sounds</th>
+                            <th>Cooldown (s)</th>
+                            <th>Status</th>
+                            <th>Play</th>
+                            <th>Remove</th>
+                        </tr>
+                    </thead>
+                    <tbody id="triggerList"></tbody>
+                </table>
+                <div style="margin-top:10px;">
+                    <button id="saveTriggers" title="Save your current triggers and setup in your browser for automatic reload next time.">Save in browser</button>
+                    <button id="loadTriggers" title="Reload the last saved setup from your browser.">Reload Last</button>
+                    <button id="downloadSetup" title="Export your triggers and setup as a .json file for backup or sharing.">Export Soundpack</button>
+                    <button id="importSetupBtn" title="Import a soundpack .json file to restore or share setups.">Import Soundpack</button>
+                    <input type="file" id="importSetup" style="display:none" accept="application/json">
+                </div>
+            </div>
+        </details>
     </div>
 
     <div id="status">Status: Ready</div>
@@ -129,19 +228,61 @@
         const statusDiv = document.getElementById('status');
         const transcriptDiv = document.getElementById('transcript');
         
+        // Audio device selection
+        const audioSourceSelect = document.getElementById('audioSource');
+        let selectedDeviceId = null;
+
+        // Fix: Define populateAudioSources at top level
+        async function populateAudioSources() {
+            const audioDeviceMsg = document.getElementById('audioDeviceMsg');
+            try {
+                // Ask for permission first if needed
+                await navigator.mediaDevices.getUserMedia({ audio: true });
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const audioInputs = devices.filter(d => d.kind === 'audioinput');
+                audioSourceSelect.innerHTML = '';
+                audioDeviceMsg.style.display = 'none';
+                if (audioInputs.length === 0) {
+                    audioSourceSelect.innerHTML = '<option value="">(No devices found)</option>';
+                    audioDeviceMsg.textContent = 'No audio input devices found.';
+                    audioDeviceMsg.style.display = '';
+                } else {
+                    audioInputs.forEach(device => {
+                        const option = document.createElement('option');
+                        option.value = device.deviceId;
+                        option.textContent = device.label || `Microphone ${audioSourceSelect.length + 1}`;
+                        audioSourceSelect.appendChild(option);
+                    });
+                    selectedDeviceId = audioInputs[0].deviceId;
+                }
+            } catch (e) {
+                audioSourceSelect.innerHTML = '<option value="">(No devices found)</option>';
+                audioDeviceMsg.textContent = 'Please allow microphone access for device selection.';
+                audioDeviceMsg.style.display = '';
+            }
+        }
+
         // Audio recording variables
         let mediaRecorder;
         let socket = null;
         let isRecording = false;
-        let isPlayingSample = false; // Mute listener when playing sample
-        const RECORD_SECONDS = 3; // Length of each audio chunk in seconds (increased for accuracy)
+        let isPlayingSample = false;
+        let stream;
+        let pcmBuffer = [];
+        let chunkInterval;
+        const RECORD_SECONDS = 3;
+        // Overlap settings
+        const CHUNK_OVERLAP_MS = 500;
+        const SAMPLE_RATE = 16000; // must match backend and audio capture
+        const OVERLAP_SAMPLES = Math.floor((CHUNK_OVERLAP_MS / 1000) * SAMPLE_RATE);
+        let overlapBuffer = new Int16Array(0); // holds last 500ms of last chunk
+
 
         // Trigger setup state
         let triggers = [];
-        let triggerAudioElements = {}; // Map trigger word to audio element for playback
+        let triggerAudioElements = {};
 
-        // Open WebSocket only when recording starts
-        // (Best practice: do not call this globally or on page load)
+        // WebSocket connection
         function connectWebSocket() {
             const wsUrl = 'wss://scarylasers--triggerword-whisper-fastapi-app.modal.run/ws';
             socket = new WebSocket(wsUrl);
@@ -149,7 +290,6 @@
             socket.onopen = () => {
                 console.log('WebSocket connected');
                 updateStatus('Connected to server', 'info');
-                // Send triggers config as first message
                 const configMsg = {
                     type: "config",
                     triggers: triggers.map(t => ({word: t.word, sound: t.soundName}))
@@ -160,7 +300,6 @@
             socket.onmessage = (event) => {
                 const message = event.data;
                 console.log('Message from server:', message);
-                // Handle trigger message from backend
                 if (message.startsWith('trigger:')) {
                     const triggerType = message.split(':')[1];
                     handleTrigger(triggerType);
@@ -174,8 +313,6 @@
             socket.onclose = () => {
                 console.log('WebSocket disconnected');
                 updateStatus('Disconnected from server', 'warning');
-                
-                // Try to reconnect after 3 seconds
                 setTimeout(connectWebSocket, 3000);
             };
             
@@ -185,18 +322,13 @@
             };
         }
         
-        // Initialize WebSocket connection when the page loads
-        //connectWebSocket();
-        
         // Update status display
         function updateStatus(message, type = 'info') {
             const statusText = `Status: ${message}`;
             statusDiv.textContent = statusText;
             
-            // Clear previous classes
             statusDiv.className = '';
             
-            // Add appropriate class based on message type
             if (type === 'error') {
                 statusDiv.style.color = '#d32f2f';
             } else if (type === 'success') {
@@ -212,57 +344,64 @@
         function updateTranscript(text) {
             if (!text.trim()) return;
             
-            // Add new text to the transcript
             const textNode = document.createTextNode(text + '\n');
             transcriptDiv.insertBefore(textNode, transcriptDiv.firstChild);
-            
-            // Scroll to the top to show the latest text
             transcriptDiv.scrollTop = 0;
         }
         
-        // Handle trigger words (play sound, mute listener)
-        // Track cooldowns for each trigger word
-        const triggerCooldowns = {}; // {word: timestamp}
+        // Handle trigger words
+        const triggerCooldowns = {};
+
+        // Helper: normalize trigger words by removing punctuation/apostrophes and lowercasing
+        function normalizeWord(word) {
+            return word.toLowerCase().replace(/[\p{P}'’]/gu, '').trim();
+        }
+
         function getCooldownMs(word) {
-            const t = triggers.find(t => t.word === word);
+            const t = triggers.find(t => normalizeWord(t.word) === normalizeWord(word));
             return ((t && t.cooldown) ? t.cooldown : 10) * 1000;
         }
 
         function handleTrigger(triggerType) {
-            // Normalize both triggerType and stored words for comparison
-            const normType = triggerType.toLowerCase().trim();
-            let found = triggers.find(t => t.word === normType);
+            // Normalize both triggerType and stored words for comparison (strip punctuation)
+            const normType = normalizeWord(triggerType);
+            let found = triggers.find(t => normalizeWord(t.word) === normType);
             let message = '';
+            let cssClass = '';
             const now = Date.now();
-            if (found && triggerAudioElements[found.word]) {
+            
+            if (found && triggerAudioElements[found.word] && triggerAudioElements[found.word].length > 0) {
                 // Cooldown check
                 const lastFired = triggerCooldowns[found.word] || 0;
                 const cdMs = getCooldownMs(found.word);
                 if (now - lastFired < cdMs) {
-                    message = `⏳ Trigger '${found.word}' is on cooldown.`;
+                    const wait = Math.ceil((cdMs - (now - lastFired)) / 1000);
+                    message = `⏳ '${found.word}' on cooldown, wait ${wait}s`;
+                    cssClass = 'cooldown-msg';
                 } else {
                     triggerCooldowns[found.word] = now;
                     isPlayingSample = true;
-                    triggerAudioElements[found.word].play();
-                    triggerAudioElements[found.word].onended = () => {
-                        isPlayingSample = false;
-                    };
-                    message = `🔔 Triggered: ${found.word}`;
+                    // Play random sound from folder
+                    const arr = triggerAudioElements[found.word];
+                    const idx = Math.floor(Math.random() * arr.length);
+                    arr[idx].play();
+                    setTimeout(() => { isPlayingSample = false; }, arr[idx].duration * 1000 + 200);
+                    message = `🔊 Triggered: '${found.word}'`;
+                    cssClass = 'triggered-msg';
                 }
             } else {
                 message = `🔔 Unknown trigger: ${triggerType}`;
             }
-            // Add trigger message to transcript
+            
             const triggerNode = document.createElement('div');
-            triggerNode.className = 'trigger';
+            triggerNode.className = cssClass || 'trigger';
             triggerNode.textContent = message;
             transcriptDiv.insertBefore(triggerNode, transcriptDiv.firstChild);
             transcriptDiv.insertBefore(document.createElement('br'), transcriptDiv.firstChild);
-            // Also show in status
             updateStatus(message, 'success');
         }
 
-        // Update cooldown display in trigger list
+        // Update cooldown display
         function updateCooldownDisplay() {
             const now = Date.now();
             triggers.forEach(t => {
@@ -280,17 +419,15 @@
                 }
             });
         }
-        setInterval(updateCooldownDisplay, 500); // update every 0.5s
+        setInterval(updateCooldownDisplay, 500);
 
-        
-        // Start recording
+        // Audio recording functions
         let audioContext;
         let scriptNode;
         let input;
 
         async function startRecording() {
             try {
-                // Open WebSocket connection only when starting recording (resource/cost saving)
                 connectWebSocket();
                 updateStatus('Requesting microphone access...');
                 stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -314,15 +451,13 @@
         }
 
         function processAudio(e) {
-            if (!isRecording || isPlayingSample) return; // Mute listener when sample is playing
+            if (!isRecording || isPlayingSample) return;
             const inputData = e.inputBuffer.getChannelData(0);
-            // Silence detection: calculate RMS (root mean square)
             let sumSquares = 0;
             for (let i = 0; i < inputData.length; i++) {
                 sumSquares += inputData[i] * inputData[i];
             }
             const rms = Math.sqrt(sumSquares / inputData.length);
-            // Only buffer if above threshold (0.005) to save compute and improve UX, but less aggressive
             if (rms > 0.005) {
                 let pcm = new Int16Array(inputData.length);
                 for (let i = 0; i < inputData.length; i++) {
@@ -343,297 +478,454 @@
                 combined.set(arr, offset);
                 offset += arr.length;
             }
+            // Prepend overlapBuffer for chunk overlap
+            let toSend;
+            if (overlapBuffer.length > 0) {
+                toSend = new Int16Array(overlapBuffer.length + combined.length);
+                toSend.set(overlapBuffer, 0);
+                toSend.set(combined, overlapBuffer.length);
+            } else {
+                toSend = combined;
+            }
+            // Update overlapBuffer with last OVERLAP_SAMPLES from this chunk
+            if (combined.length >= OVERLAP_SAMPLES) {
+                overlapBuffer = combined.slice(combined.length - OVERLAP_SAMPLES);
+            } else {
+                // If chunk is smaller, just use what we have
+                overlapBuffer = combined.slice();
+            }
             pcmBuffer = [];
-            // Send as ArrayBuffer
             if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(combined.buffer);
+                socket.send(toSend.buffer);
             }
         }
 
-        function stopRecording() {
-            isRecording = false;
-            startBtn.disabled = false;
-            stopBtn.disabled = true;
-            statusDiv.classList.remove('recording');
-            if (chunkInterval) clearInterval(chunkInterval);
-            if (scriptNode) scriptNode.disconnect();
-            if (input) input.disconnect();
-            if (audioContext) audioContext.close();
-            if (stream) stream.getTracks().forEach(track => track.stop());
-            pcmBuffer = [];
-            updateStatus('Recording stopped');
-        }
-
-        // Stop recording
         function stopRecording() {
             if (isRecording) {
                 isRecording = false;
                 startBtn.disabled = false;
                 stopBtn.disabled = true;
                 statusDiv.classList.remove('recording');
-                // Send stop signal to backend for immediate cleanup and cost savings
+                if (chunkInterval) clearInterval(chunkInterval);
+                if (scriptNode) scriptNode.disconnect();
+                if (input) input.disconnect();
+                if (audioContext) audioContext.close();
+                if (stream) stream.getTracks().forEach(track => track.stop());
+                pcmBuffer = [];
                 if (socket && socket.readyState === WebSocket.OPEN) {
                     socket.send("__STOP__");
-                    // Close the socket to free backend resources
                     socket.close();
                 }
                 socket = null;
+                updateStatus('Recording stopped');
             }
         }
 
-        // Trigger form logic
+        // Trigger management functions
         const triggerForm = document.getElementById('triggerForm');
         const triggerWordInput = document.getElementById('triggerWord');
         const triggerSoundInput = document.getElementById('triggerSound');
         const triggerList = document.getElementById('triggerList');
         const saveTriggersBtn = document.getElementById('saveTriggers');
         const loadTriggersBtn = document.getElementById('loadTriggers');
+        const downloadSetupBtn = document.getElementById('downloadSetup');
+        const importSetupBtn = document.getElementById('importSetupBtn');
+        const importSetupInput = document.getElementById('importSetup');
+
+        // Helper: normalize trigger words by removing punctuation/apostrophes and lowercasing
+        function normalizeWord(word) {
+            return word.toLowerCase().replace(/[\p{P}'’]/gu, '').trim();
+        }
 
         function renderTriggerList() {
-            triggerList.innerHTML = `
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Word</th>
-                            <th>Sound</th>
-                            <th>Cooldown</th>
-                            <th>Status</th>
-                            <th>Play</th>
-                            <th>Remove</th>
-                        </tr>
-                    </thead>
-        }
-        socket = null;
-    }
-}
-
-// Trigger form logic
-const triggerForm = document.getElementById('triggerForm');
-const triggerWordInput = document.getElementById('triggerWord');
-const triggerSoundInput = document.getElementById('triggerSound');
-const triggerList = document.getElementById('triggerList');
-const saveTriggersBtn = document.getElementById('saveTriggers');
-const loadTriggersBtn = document.getElementById('loadTriggers');
-
-function renderTriggerList() {
-    const tbody = document.getElementById('trigger-list-body');
-    tbody.innerHTML = '';
-    triggers.forEach((t, idx) => {
-        const row = document.createElement('tr');
-        // Word
-        const wordCell = document.createElement('td');
-        wordCell.textContent = t.word;
-        row.appendChild(wordCell);
-        // Sound
-        const soundCell = document.createElement('td');
-        soundCell.textContent = t.soundName || 'No sound';
-        row.appendChild(soundCell);
-        // Cooldown
-        const cdCell = document.createElement('td');
-        cdCell.textContent = t.cooldown || 10;
-        row.appendChild(cdCell);
-        // Status
-        const statusCell = document.createElement('td');
-        const cdSpan = document.createElement('span');
-        cdSpan.id = `cd-status-${t.word}`;
-        statusCell.appendChild(cdSpan);
-        row.appendChild(statusCell);
-        // Play button
-        const playCell = document.createElement('td');
-        const playBtn = document.createElement('button');
-        playBtn.textContent = '▶️';
-        playBtn.disabled = !triggerAudioElements[t.word];
-        playBtn.onclick = () => {
-            if (triggerAudioElements[t.word]) {
-                triggerAudioElements[t.word].play();
-            }
-        };
-        playCell.appendChild(playBtn);
-        row.appendChild(playCell);
-        // Remove button
-        const removeCell = document.createElement('td');
-        const removeBtn = document.createElement('button');
-        removeBtn.textContent = '❌';
-        removeBtn.onclick = async () => {
-            triggers.splice(idx, 1);
-            await deleteAudioFromDB(t.word);
-            saveTriggersToStorage();
-            renderTriggerList();
-        };
-        removeCell.appendChild(removeBtn);
-        row.appendChild(removeCell);
-        tbody.appendChild(row);
-    });
-}
-
-        // Remove button
-        const removeCell = document.createElement('td');
-        const removeBtn = document.createElement('button');
-        removeBtn.textContent = '❌';
-        removeBtn.onclick = async () => {
-            triggers.splice(idx, 1);
-            await deleteAudioFromDB(t.word);
-            saveTriggersToStorage();
-            renderTriggerList();
-        };
-        removeCell.appendChild(removeBtn);
-        row.appendChild(removeCell);
-        triggerList.appendChild(row);
-    });
-}
-
-triggerForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    // Always store trigger words as lowercase and trimmed
-    const word = triggerWordInput.value.trim().toLowerCase();
-    const file = triggerSoundInput.files[0];
-    const cooldown = parseInt(document.getElementById('triggerCooldown').value, 10) || 10;
-    if (!word) return;
-    let soundName = '';
-    if (file) {
-        soundName = file.name;
-        await saveAudioToDB(word, file);
-        const blob = await getAudioFromDB(word);
-        if (blob) {
-            const url = URL.createObjectURL(blob);
-            triggerAudioElements[word] = new Audio(url);
-        }
-    } else {
-        triggerAudioElements[word] = null;
-        await deleteAudioFromDB(word);
-    }
-    triggers.push({word, soundName, cooldown});
-    renderTriggerList();
-    saveTriggersToStorage();
-    triggerForm.reset();
-});
-
-saveTriggersBtn.addEventListener('click', () => {
-    saveTriggersToStorage();
-    updateStatus('✅ Trigger setup saved!', 'success');
-});
-
-loadTriggersBtn.addEventListener('click', () => {
-    loadTriggersFromStorage();
-    updateStatus('Trigger setup loaded!', 'success');
-});
-
-downloadSetupBtn.addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify(triggers, null, 2)], {type: 'application/json'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'trigger_setup.json';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    }, 100);
-});
-
-importSetupBtn.addEventListener('click', () => {
-    importSetupInput.click();
-});
-importSetupInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = function(evt) {
-        try {
-            const imported = JSON.parse(evt.target.result);
-            if (!Array.isArray(imported)) throw new Error('Invalid format');
-            // Validate minimal trigger structure
-            imported.forEach(t => {
-                if (!t.word) throw new Error('Missing word in trigger');
-            });
-            triggers = imported;
-            saveTriggersToStorage();
-            renderTriggerList();
-            updateStatus('✅ Setup imported!', 'success');
-        } catch (err) {
-            updateStatus('❌ Failed to import: ' + err.message, 'error');
-        }
-    };
-    reader.readAsText(file);
-});
-
-// IndexedDB audio persistence helpers
-const DB_NAME = 'triggerword-audio';
-const DB_VERSION = 1;
-const STORE_NAME = 'audiofiles';
-let db;
-function openAudioDB() {
-    return new Promise((resolve, reject) => {
-        if (db) return resolve(db);
-        const req = indexedDB.open(DB_NAME, DB_VERSION);
-        req.onerror = () => reject(req.error);
-        req.onsuccess = () => { db = req.result; resolve(db); };
-        req.onupgradeneeded = () => {
-            req.result.createObjectStore(STORE_NAME);
-        };
-    });
-}
-function saveAudioToDB(key, file) {
-    return openAudioDB().then(db => {
-        return new Promise((resolve, reject) => {
-            const tx = db.transaction(STORE_NAME, 'readwrite');
-            tx.objectStore(STORE_NAME).put(file, key);
-            tx.oncomplete = resolve;
-            tx.onerror = () => reject(tx.error);
-        });
-    });
-}
-function getAudioFromDB(key) {
-    return openAudioDB().then(db => {
-        return new Promise((resolve, reject) => {
-            const tx = db.transaction(STORE_NAME, 'readonly');
-            const req = tx.objectStore(STORE_NAME).get(key);
-            req.onsuccess = () => resolve(req.result);
-            req.onerror = () => reject(req.error);
-        });
-    });
-}
-function deleteAudioFromDB(key) {
-    return openAudioDB().then(db => {
-        return new Promise((resolve, reject) => {
-            const tx = db.transaction(STORE_NAME, 'readwrite');
-            tx.objectStore(STORE_NAME).delete(key);
-            tx.oncomplete = resolve;
-            tx.onerror = () => reject(tx.error);
-        });
-    });
-}
-
-// Save/load triggers from localStorage (persist cooldown, soundName, word)
-function saveTriggersToStorage() {
-    localStorage.setItem('triggers', JSON.stringify(triggers));
-}
-async function loadTriggersFromStorage() {
-    const data = localStorage.getItem('triggers');
-    if (data) {
-        triggers = JSON.parse(data);
-        // Restore audio elements from IndexedDB
-        for (const t of triggers) {
-            if (t.soundName) {
-                const blob = await getAudioFromDB(t.word);
-                if (blob) {
-                    const url = URL.createObjectURL(blob);
-                    triggerAudioElements[t.word] = new Audio(url);
+            triggerList.innerHTML = '';
+            triggers.forEach((t, idx) => {
+                const row = document.createElement('tr');
+                // Word
+                const wordCell = document.createElement('td');
+                wordCell.textContent = t.word;
+                row.appendChild(wordCell);
+                // Sounds (folder) with expandable list if >1
+                const soundCell = document.createElement('td');
+                if (t.sounds && t.sounds.length > 0) {
+                    if (t.sounds.length > 1) {
+                        let expanded = false;
+                        const expandBtn = document.createElement('button');
+                        expandBtn.textContent = '▶️';
+                        expandBtn.style.marginRight = '6px';
+                        soundCell.appendChild(expandBtn);
+                        const labelSpan = document.createElement('span');
+                        labelSpan.textContent = `${t.sounds.length} files`;
+                        soundCell.appendChild(labelSpan);
+                        expandBtn.onclick = function() {
+                            expanded = !expanded;
+                            expandBtn.textContent = expanded ? '▼' : '▶️';
+                            if (expanded) {
+                                // Insert a new row below listing all sounds
+                                const soundListRow = document.createElement('tr');
+                                soundListRow.className = 'sound-list-row';
+                                const soundListCell = document.createElement('td');
+                                soundListCell.colSpan = 6;
+                                soundListCell.style.background = '#f6faff';
+                                soundListCell.style.fontSize = '0.97em';
+                                soundListCell.style.padding = '8px 16px';
+                                // Build compact sound chip list with preview and remove
+                                const soundListDiv = document.createElement('div');
+                                soundListDiv.style.display = 'flex';
+                                soundListDiv.style.flexWrap = 'wrap';
+                                soundListDiv.style.gap = '4px';
+                                t.sounds.forEach((s, soundIdx) => {
+                                    const chip = document.createElement('span');
+                                    chip.className = 'sound-chip';
+                                    // Preview button
+                                    const previewBtn = document.createElement('button');
+                                    previewBtn.title = 'Preview';
+                                    previewBtn.innerHTML = '▶️';
+                                    previewBtn.onclick = async function() {
+                                        const ab = await getAudioFromDB(s.blobKey);
+                                        if (ab) {
+                                            const blob = new Blob([ab], { type: 'audio/wav' });
+                                            const url = URL.createObjectURL(blob);
+                                            const audio = new Audio(url);
+                                            audio.play();
+                                        }
+                                    };
+                                    chip.appendChild(previewBtn);
+                                    // Sound name
+                                    const nameSpan = document.createElement('span');
+                                    nameSpan.textContent = s.name;
+                                    nameSpan.style.margin = '0 2px';
+                                    chip.appendChild(nameSpan);
+                                    // Remove button
+                                    const removeBtn = document.createElement('button');
+                                    removeBtn.title = 'Remove';
+                                    removeBtn.innerHTML = '✕';
+                                    removeBtn.style.color = '#c62828';
+                                    removeBtn.onclick = async function() {
+                                        // Remove from IndexedDB
+                                        const request = indexedDB.open('TriggerAudioDB', 1);
+                                        request.onsuccess = function(e) {
+                                            const db = e.target.result;
+                                            const tx = db.transaction('audio', 'readwrite');
+                                            const store = tx.objectStore('audio');
+                                            store.delete(s.blobKey);
+                                            tx.oncomplete = function(){};
+                                        };
+                                        // Remove from trigger.sounds
+                                        t.sounds.splice(soundIdx, 1);
+                                        saveTriggersToStorage();
+                                        await loadTriggersFromStorage();
+                                        renderTriggerList();
+                                    };
+                                    chip.appendChild(removeBtn);
+                                    soundListDiv.appendChild(chip);
+                                });
+                                // Add Sound icon button
+                                const addSoundBtn = document.createElement('button');
+                                addSoundBtn.className = 'add-sound-icon-btn';
+                                addSoundBtn.title = 'Add Sound';
+                                addSoundBtn.innerHTML = '+';
+                                addSoundBtn.onclick = function() {
+                                    const fileInput = document.createElement('input');
+                                    fileInput.type = 'file';
+                                    fileInput.accept = 'audio/*';
+                                    fileInput.multiple = true;
+                                    fileInput.style.display = 'none';
+                                    fileInput.onchange = async function() {
+                                        const files = Array.from(fileInput.files);
+                                        for (let file of files) {
+                                            const blobKey = `${t.word}--${Date.now()}--${file.name}`;
+                                            await saveAudioToDB(blobKey, file);
+                                            if (!t.sounds) t.sounds = [];
+                                            t.sounds.push({ name: file.name, blobKey });
+                                        }
+                                        saveTriggersToStorage();
+                                        await loadTriggersFromStorage();
+                                        renderTriggerList();
+                                    };
+                                    document.body.appendChild(fileInput);
+                                    fileInput.click();
+                                    setTimeout(() => fileInput.remove(), 1000);
+                                };
+                                soundListDiv.appendChild(addSoundBtn);
+                                soundListCell.appendChild(soundListDiv);
+                                soundListRow.appendChild(soundListCell);
+                                row.parentNode.insertBefore(soundListRow, row.nextSibling);
+                                expandBtn._soundListRow = soundListRow;
+                            } else if (expandBtn._soundListRow) {
+                                expandBtn._soundListRow.remove();
+                                expandBtn._soundListRow = null;
+                            }
+                        };
+                    } else {
+                        soundCell.textContent = t.sounds[0].name;
+                    }
                 } else {
-                    triggerAudioElements[t.word] = null;
+                    soundCell.textContent = 'No sounds';
                 }
-            } else {
-                triggerAudioElements[t.word] = null;
-            }
+                row.appendChild(soundCell);
+                // Cooldown (editable input)
+                const cdCell = document.createElement('td');
+                const cdInput = document.createElement('input');
+                cdInput.type = 'number';
+                cdInput.min = '1';
+                cdInput.value = t.cooldown || 10;
+                cdInput.style.width = '60px';
+                cdInput.addEventListener('change', () => {
+                    t.cooldown = parseInt(cdInput.value, 10) || 10;
+                    saveTriggersToStorage();
+                });
+                cdCell.appendChild(cdInput);
+                row.appendChild(cdCell);
+                // Status
+                const statusCell = document.createElement('td');
+                const cdSpan = document.createElement('span');
+                cdSpan.id = `cd-status-${t.word}`;
+                statusCell.appendChild(cdSpan);
+                row.appendChild(statusCell);
+                // Play button
+                const playCell = document.createElement('td');
+                const playBtn = document.createElement('button');
+                playBtn.textContent = '▶️';
+                playBtn.disabled = !(triggerAudioElements[t.word] && triggerAudioElements[t.word].length > 0);
+                playBtn.onclick = function() {
+                    if (triggerAudioElements[t.word] && triggerAudioElements[t.word].length > 0) {
+                        // Play random sound
+                        const arr = triggerAudioElements[t.word];
+                        const idx = Math.floor(Math.random() * arr.length);
+                        arr[idx].play();
+                    }
+                };
+                playCell.appendChild(playBtn);
+                // Add Sound button
+                const addSoundBtn = document.createElement('button');
+                addSoundBtn.textContent = '➕ Add Sound';
+                addSoundBtn.style.marginLeft = '6px';
+                addSoundBtn.onclick = function() {
+                    // Create a hidden file input and trigger it
+                    const fileInput = document.createElement('input');
+                    fileInput.type = 'file';
+                    fileInput.accept = 'audio/*';
+                    fileInput.multiple = true;
+                    fileInput.style.display = 'none';
+                    fileInput.onchange = async function() {
+                        const files = Array.from(fileInput.files);
+                        for (let file of files) {
+                            const blobKey = `${t.word}--${Date.now()}--${file.name}`;
+                            await saveAudioToDB(blobKey, file);
+                            if (!t.sounds) t.sounds = [];
+                            t.sounds.push({ name: file.name, blobKey });
+                        }
+                        saveTriggersToStorage();
+                        await loadTriggersFromStorage();
+                        renderTriggerList();
+                    };
+                    document.body.appendChild(fileInput);
+                    fileInput.click();
+                    setTimeout(() => fileInput.remove(), 1000);
+                };
+                playCell.appendChild(addSoundBtn);
+                row.appendChild(playCell);
+                // Remove button
+                const removeCell = document.createElement('td');
+                const removeBtn = document.createElement('button');
+                removeBtn.textContent = '❌';
+                removeBtn.onclick = async function() {
+                    const trigger = triggers[idx];
+                    triggers.splice(idx, 1);
+                    await deleteAudioFromDBByTrigger(trigger);
+                    saveTriggersToStorage();
+                    renderTriggerList();
+                };
+                removeCell.appendChild(removeBtn);
+                row.appendChild(removeCell);
+                triggerList.appendChild(row);
+            });
         }
+
+        // Form submission handler
+        triggerForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const word = normalizeWord(triggerWordInput.value);
+            const files = Array.from(triggerSoundInput.files);
+            const cooldown = parseInt(document.getElementById('triggerCooldown').value, 10) || 10;
+            if (!word) return;
+            // Prepare sounds array
+            let sounds = [];
+            for (let file of files) {
+                const blobKey = `${word}--${Date.now()}--${file.name}`;
+                await saveAudioToDB(blobKey, file);
+                sounds.push({ name: file.name, blobKey });
+            }
+            // Store in triggers array
+            const newTrigger = {
+                word,
+                sounds,
+                cooldown
+            };
+            triggers.push(newTrigger);
+            saveTriggersToStorage();
+            renderTriggerList();
+            triggerForm.reset();
         });
 
-        renderTriggerList();
+        // IndexedDB audio persistence helpers
+        const DB_NAME = 'triggerword-audio';
+        const DB_VERSION = 1;
+        const STORE_NAME = 'audiofiles';
+
+        // IndexedDB helpers
+        function saveAudioToDB(blobKey, file) {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open('TriggerAudioDB', 1);
+                request.onupgradeneeded = function(e) {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains('audio')) {
+                        db.createObjectStore('audio');
+                    }
+                };
+                request.onsuccess = function(e) {
+                    const db = e.target.result;
+                    const reader = new FileReader();
+                    reader.onload = function(ev) {
+                        const tx = db.transaction('audio', 'readwrite');
+                        const store = tx.objectStore('audio');
+                        store.put(ev.target.result, blobKey);
+                        tx.oncomplete = resolve;
+                        tx.onerror = reject;
+                    };
+                    reader.onerror = reject;
+                    reader.readAsArrayBuffer(file);
+                };
+                request.onerror = reject;
+            });
+        }
+        function getAudioFromDB(blobKey) {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open('TriggerAudioDB', 1);
+                request.onsuccess = function(e) {
+                    const db = e.target.result;
+                    const tx = db.transaction('audio', 'readonly');
+                    const store = tx.objectStore('audio');
+                    const getReq = store.get(blobKey);
+                    getReq.onsuccess = function(ev) {
+                        resolve(ev.target.result);
+                    };
+                    getReq.onerror = reject;
+                };
+                request.onerror = reject;
+            });
+        }
+        async function deleteAudioFromDBByTrigger(trigger) {
+            // Remove all audio blobs for this trigger
+            if (trigger.sounds && trigger.sounds.length > 0) {
+                const request = indexedDB.open('TriggerAudioDB', 1);
+                request.onsuccess = function(e) {
+                    const db = e.target.result;
+                    const tx = db.transaction('audio', 'readwrite');
+                    const store = tx.objectStore('audio');
+                    for (const s of trigger.sounds) {
+                        store.delete(s.blobKey);
+                    }
+                    tx.oncomplete = function(){};
+                };
+            }
+        }
+
+        // Save/load triggers from localStorage
+        function saveTriggersToStorage() {
+            localStorage.setItem('triggers', JSON.stringify(triggers));
+        }
+
+        async function loadTriggersFromStorage() {
+            const raw = localStorage.getItem('triggers');
+            if (!raw) return;
+            triggers = JSON.parse(raw);
+            // Load audio for each trigger
+            for (const t of triggers) {
+                if (t.word) {
+                    const audioArr = [];
+                    if (t.sounds && t.sounds.length > 0) {
+                        for (const s of t.sounds) {
+                            const ab = await getAudioFromDB(s.blobKey);
+                            if (ab) {
+                                const blob = new Blob([ab], { type: 'audio/wav' });
+                                const url = URL.createObjectURL(blob);
+                                const audio = new Audio(url);
+                                audioArr.push(audio);
+                            }
+                        }
+                    }
+                    triggerAudioElements[t.word] = audioArr;
+                }
+            }
+        }
+
+        // Button event listeners
+        saveTriggersBtn.addEventListener('click', () => {
+            saveTriggersToStorage();
+            updateStatus('✅ Trigger setup saved!', 'success');
+        });
+
+        loadTriggersBtn.addEventListener('click', async () => {
+            await loadTriggersFromStorage();
+            renderTriggerList();
+            if (!triggers || triggers.length === 0) {
+                updateStatus('No saved setup found in browser.', 'error');
+            } else {
+                updateStatus('Trigger setup loaded!', 'success');
+            }
+        });
+
+        downloadSetupBtn.textContent = 'Save this soundpack';
+        downloadSetupBtn.addEventListener('click', () => {
+            const data = JSON.stringify(triggers, null, 2);
+            const blob = new Blob([data], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'TriggerWord Sound Pack.json';
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        });
+
+        importSetupBtn.textContent = 'Import Soundpack';
+        importSetupBtn.addEventListener('click', () => {
+            importSetupInput.click();
+        });
+
+        importSetupInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                try {
+                    const imported = JSON.parse(evt.target.result);
+                    if (!Array.isArray(imported)) throw new Error('Invalid format');
+                    imported.forEach(t => {
+                        if (!t.word) throw new Error('Missing word in trigger');
+                    });
+                    triggers = imported;
+                    saveTriggersToStorage();
+                    renderTriggerList();
+                    updateStatus('✅ Setup imported!', 'success');
+                } catch (err) {
+                    updateStatus('❌ Failed to import: ' + err.message, 'error');
+                }
+            };
+            reader.readAsText(file);
+        });
 
         // Event listeners
         startBtn.addEventListener('click', startRecording);
         stopBtn.addEventListener('click', stopRecording);
+
+        // On page load, auto-load saved setup and audio devices
+        window.addEventListener('DOMContentLoaded', async () => {
+            await populateAudioSources();
+            await loadTriggersFromStorage();
+            renderTriggerList();
+        });
 
         // Handle page unload
         window.addEventListener('beforeunload', () => {
