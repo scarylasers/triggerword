@@ -79,7 +79,7 @@
     </style>
 </head>
 <body>
-    <h1>Audio Recorder with Trigger Words</h1>
+    <h1>TriggerWord</h1>
     
     <div class="controls">
         <button id="startBtn">Listen for triggers</button>
@@ -92,11 +92,27 @@
         <form id="triggerForm">
             <input type="text" id="triggerWord" placeholder="Trigger word/phrase" required>
             <input type="file" id="triggerSound" accept="audio/*">
+            <input type="number" id="triggerCooldown" min="1" value="10" style="width:60px;" required> <label for="triggerCooldown">Cooldown (s)</label>
             <button type="submit">Add Trigger</button>
         </form>
-        <ul id="triggerList"></ul>
+        <table id="triggerTable" style="width:100%; border-collapse:collapse; margin-top:10px;">
+            <thead>
+                <tr>
+                    <th style="border-bottom:1px solid #ccc;">Word</th>
+                    <th style="border-bottom:1px solid #ccc;">Sound</th>
+                    <th style="border-bottom:1px solid #ccc;">Cooldown (s)</th>
+                    <th style="border-bottom:1px solid #ccc;">Status</th>
+                    <th style="border-bottom:1px solid #ccc;">Play</th>
+                    <th style="border-bottom:1px solid #ccc;">Remove</th>
+                </tr>
+            </thead>
+            <tbody id="triggerList"></tbody>
+        </table>
         <button id="saveTriggers">Save Setup</button>
         <button id="loadTriggers">Load Setup</button>
+        <button id="downloadSetup">Download Setup</button>
+        <input type="file" id="importSetup" accept="application/json" style="display:none;">
+        <button id="importSetupBtn">Import Setup</button>
     </div>
 
     <div id="status">Status: Ready</div>
@@ -205,16 +221,34 @@
         }
         
         // Handle trigger words (play sound, mute listener)
+        // Track cooldowns for each trigger word
+        const triggerCooldowns = {}; // {word: timestamp}
+        function getCooldownMs(word) {
+            const t = triggers.find(t => t.word === word);
+            return ((t && t.cooldown) ? t.cooldown : 10) * 1000;
+        }
+
         function handleTrigger(triggerType) {
+            // Normalize both triggerType and stored words for comparison
+            const normType = triggerType.toLowerCase().trim();
+            let found = triggers.find(t => t.word === normType);
             let message = '';
-            let found = triggers.find(t => t.word === triggerType);
-            if (found && triggerAudioElements[triggerType]) {
-                isPlayingSample = true;
-                triggerAudioElements[triggerType].play();
-                triggerAudioElements[triggerType].onended = () => {
-                    isPlayingSample = false;
-                };
-                message = `🔔 Triggered: ${triggerType}`;
+            const now = Date.now();
+            if (found && triggerAudioElements[found.word]) {
+                // Cooldown check
+                const lastFired = triggerCooldowns[found.word] || 0;
+                const cdMs = getCooldownMs(found.word);
+                if (now - lastFired < cdMs) {
+                    message = `⏳ Trigger '${found.word}' is on cooldown.`;
+                } else {
+                    triggerCooldowns[found.word] = now;
+                    isPlayingSample = true;
+                    triggerAudioElements[found.word].play();
+                    triggerAudioElements[found.word].onended = () => {
+                        isPlayingSample = false;
+                    };
+                    message = `🔔 Triggered: ${found.word}`;
+                }
             } else {
                 message = `🔔 Unknown trigger: ${triggerType}`;
             }
@@ -227,6 +261,27 @@
             // Also show in status
             updateStatus(message, 'success');
         }
+
+        // Update cooldown display in trigger list
+        function updateCooldownDisplay() {
+            const now = Date.now();
+            triggers.forEach(t => {
+                const cdSpan = document.getElementById(`cd-status-${t.word}`);
+                if (!cdSpan) return;
+                const cdMs = getCooldownMs(t.word);
+                const lastFired = triggerCooldowns[t.word] || 0;
+                const remaining = Math.max(0, Math.ceil((cdMs - (now - lastFired))/1000));
+                if (remaining > 0) {
+                    cdSpan.textContent = ` | Cooldown: ${remaining}s`;
+                    cdSpan.style.color = '#aaa';
+                } else {
+                    cdSpan.textContent = ' | Ready';
+                    cdSpan.style.color = 'green';
+                }
+            });
+        }
+        setInterval(updateCooldownDisplay, 500); // update every 0.5s
+
         
         // Start recording
         let audioContext;
@@ -335,53 +390,244 @@
         const loadTriggersBtn = document.getElementById('loadTriggers');
 
         function renderTriggerList() {
-            triggerList.innerHTML = '';
-            triggers.forEach((t, idx) => {
-                const li = document.createElement('li');
-                li.textContent = `${t.word} (${t.soundName || 'No sound'})`;
-                const delBtn = document.createElement('button');
-                delBtn.textContent = 'Remove';
-                delBtn.onclick = () => {
-                    triggers.splice(idx, 1);
-                    delete triggerAudioElements[t.word];
-                    renderTriggerList();
-                };
-                li.appendChild(delBtn);
-                triggerList.appendChild(li);
-            });
+            triggerList.innerHTML = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Word</th>
+                            <th>Sound</th>
+                            <th>Cooldown</th>
+                            <th>Status</th>
+                            <th>Play</th>
+                            <th>Remove</th>
+                        </tr>
+                    </thead>
         }
+        socket = null;
+    }
+}
 
-        triggerForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const word = triggerWordInput.value.trim();
-            const file = triggerSoundInput.files[0];
-            if (!word) return;
-            let soundName = '';
-            if (file) {
-                soundName = file.name;
-                const url = URL.createObjectURL(file);
-                const audio = new Audio(url);
-                triggerAudioElements[word] = audio;
-            } else {
-                triggerAudioElements[word] = null;
+// Trigger form logic
+const triggerForm = document.getElementById('triggerForm');
+const triggerWordInput = document.getElementById('triggerWord');
+const triggerSoundInput = document.getElementById('triggerSound');
+const triggerList = document.getElementById('triggerList');
+const saveTriggersBtn = document.getElementById('saveTriggers');
+const loadTriggersBtn = document.getElementById('loadTriggers');
+
+function renderTriggerList() {
+    triggerList.innerHTML = `
+        <table>
+            <thead>
+                <tr>
+                    <th>Word</th>
+                    <th>Sound</th>
+                    <th>Cooldown</th>
+                    <th>Status</th>
+                    <th>Play</th>
+                    <th>Remove</th>
+                </tr>
+            </thead>
+            <tbody id="trigger-list-body">
+            </tbody>
+        </table>
+    `;
+    const tbody = document.getElementById('trigger-list-body');
+    triggers.forEach((t, idx) => {
+        const row = document.createElement('tr');
+        // Word
+        const wordCell = document.createElement('td');
+        wordCell.textContent = t.word;
+        row.appendChild(wordCell);
+        // Sound
+        const soundCell = document.createElement('td');
+        soundCell.textContent = t.soundName || 'No sound';
+        row.appendChild(soundCell);
+        // Cooldown
+        const cdCell = document.createElement('td');
+        cdCell.textContent = t.cooldown || 10;
+        row.appendChild(cdCell);
+        // Status
+        const statusCell = document.createElement('td');
+        const cdSpan = document.createElement('span');
+        cdSpan.id = `cd-status-${t.word}`;
+        statusCell.appendChild(cdSpan);
+        row.appendChild(statusCell);
+        // Play button
+        const playCell = document.createElement('td');
+        const playBtn = document.createElement('button');
+        playBtn.textContent = '▶️';
+        playBtn.disabled = !triggerAudioElements[t.word];
+        playBtn.onclick = () => {
+            if (triggerAudioElements[t.word]) {
+                triggerAudioElements[t.word].play();
             }
-            triggers.push({word, soundName});
+        };
+        playCell.appendChild(playBtn);
+        row.appendChild(playCell);
+        // Remove button
+        const removeCell = document.createElement('td');
+        const removeBtn = document.createElement('button');
+        removeBtn.textContent = '❌';
+        removeBtn.onclick = async () => {
+            triggers.splice(idx, 1);
+            await deleteAudioFromDB(t.word);
+            saveTriggersToStorage();
             renderTriggerList();
-            triggerForm.reset();
+        };
+        removeCell.appendChild(removeBtn);
+        row.appendChild(removeCell);
+        triggerList.appendChild(row);
+    });
+}
+
+triggerForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    // Always store trigger words as lowercase and trimmed
+    const word = triggerWordInput.value.trim().toLowerCase();
+    const file = triggerSoundInput.files[0];
+    const cooldown = parseInt(document.getElementById('triggerCooldown').value, 10) || 10;
+    if (!word) return;
+    let soundName = '';
+    if (file) {
+        soundName = file.name;
+        await saveAudioToDB(word, file);
+        const blob = await getAudioFromDB(word);
+        if (blob) {
+            const url = URL.createObjectURL(blob);
+            triggerAudioElements[word] = new Audio(url);
+        }
+    } else {
+        triggerAudioElements[word] = null;
+        await deleteAudioFromDB(word);
+    }
+    triggers.push({word, soundName, cooldown});
+    renderTriggerList();
+    saveTriggersToStorage();
+    triggerForm.reset();
+});
+
+saveTriggersBtn.addEventListener('click', () => {
+    saveTriggersToStorage();
+    updateStatus('✅ Trigger setup saved!', 'success');
+});
+
+loadTriggersBtn.addEventListener('click', () => {
+    loadTriggersFromStorage();
+    updateStatus('Trigger setup loaded!', 'success');
+});
+
+downloadSetupBtn.addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(triggers, null, 2)], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'trigger_setup.json';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, 100);
+});
+
+importSetupBtn.addEventListener('click', () => {
+    importSetupInput.click();
+});
+importSetupInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+        try {
+            const imported = JSON.parse(evt.target.result);
+            if (!Array.isArray(imported)) throw new Error('Invalid format');
+            // Validate minimal trigger structure
+            imported.forEach(t => {
+                if (!t.word) throw new Error('Missing word in trigger');
+            });
+            triggers = imported;
+            saveTriggersToStorage();
+            renderTriggerList();
+            updateStatus('✅ Setup imported!', 'success');
+        } catch (err) {
+            updateStatus('❌ Failed to import: ' + err.message, 'error');
+        }
+    };
+    reader.readAsText(file);
+});
+
+// IndexedDB audio persistence helpers
+const DB_NAME = 'triggerword-audio';
+const DB_VERSION = 1;
+const STORE_NAME = 'audiofiles';
+let db;
+function openAudioDB() {
+    return new Promise((resolve, reject) => {
+        if (db) return resolve(db);
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onerror = () => reject(req.error);
+        req.onsuccess = () => { db = req.result; resolve(db); };
+        req.onupgradeneeded = () => {
+            req.result.createObjectStore(STORE_NAME);
+        };
+    });
+}
+function saveAudioToDB(key, file) {
+    return openAudioDB().then(db => {
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE_NAME, 'readwrite');
+            tx.objectStore(STORE_NAME).put(file, key);
+            tx.oncomplete = resolve;
+            tx.onerror = () => reject(tx.error);
+        });
+    });
+}
+function getAudioFromDB(key) {
+    return openAudioDB().then(db => {
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE_NAME, 'readonly');
+            const req = tx.objectStore(STORE_NAME).get(key);
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+        });
+    });
+}
+function deleteAudioFromDB(key) {
+    return openAudioDB().then(db => {
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE_NAME, 'readwrite');
+            tx.objectStore(STORE_NAME).delete(key);
+            tx.oncomplete = resolve;
+            tx.onerror = () => reject(tx.error);
+        });
+    });
+}
+
+// Save/load triggers from localStorage (persist cooldown, soundName, word)
+function saveTriggersToStorage() {
+    localStorage.setItem('triggers', JSON.stringify(triggers));
+}
+async function loadTriggersFromStorage() {
+    const data = localStorage.getItem('triggers');
+    if (data) {
+        triggers = JSON.parse(data);
+        // Restore audio elements from IndexedDB
+        for (const t of triggers) {
+            if (t.soundName) {
+                const blob = await getAudioFromDB(t.word);
+                if (blob) {
+                    const url = URL.createObjectURL(blob);
+                    triggerAudioElements[t.word] = new Audio(url);
+                } else {
+                    triggerAudioElements[t.word] = null;
+                }
+            } else {
+                triggerAudioElements[t.word] = null;
+            }
+        }
         });
 
-        saveTriggersBtn.addEventListener('click', () => {
-            localStorage.setItem('triggers', JSON.stringify(triggers));
-            updateStatus('Trigger setup saved!', 'success');
-        });
-        loadTriggersBtn.addEventListener('click', () => {
-            const saved = localStorage.getItem('triggers');
-            if (saved) {
-                triggers = JSON.parse(saved);
-                renderTriggerList();
-                updateStatus('Trigger setup loaded!', 'success');
-            }
-        });
         renderTriggerList();
 
         // Event listeners
