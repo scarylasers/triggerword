@@ -7049,29 +7049,52 @@
         // what came back. Deletion only happens if the user clicks the
         // "Clean up" button this builds — findOrphanBlobs itself never deletes.
         async function reportOrphans() {
-            const entries = await new Promise((resolve) => {
-                const req = indexedDB.open('TriggerAudioDB', 1);
-                req.onsuccess = function() {
-                    const db = req.result;
-                    const tx = db.transaction('audio', 'readonly');
-                    const store = tx.objectStore('audio');
-                    const out = [];
-                    store.openCursor().onsuccess = function(e) {
-                        const cursor = e.target.result;
-                        if (cursor) {
-                            // Stored values are ArrayBuffers (see saveAudioToDB), so
-                            // byteLength is the size — not .size.
-                            out.push({ key: cursor.key, size: cursor.value?.byteLength || 0 });
-                            cursor.continue();
-                        } else resolve(out);
-                    };
-                };
-                req.onerror = function() { resolve([]); };
-            });
-
-            const { keys, totalBytes } = window.persistence.findOrphanBlobs(triggers, entries);
             const el = document.getElementById('orphanReport');
             el.textContent = '';                              // clear, never innerHTML
+
+            // A failed/blocked scan must NOT be indistinguishable from "nothing to
+            // clean" — that is exactly the "concluded all-clear from an error"
+            // failure mode this project exists to avoid. Reject on any DB/cursor
+            // error instead of quietly resolving to [], and report the failure
+            // honestly rather than fabricating a zero count.
+            let entries;
+            try {
+                entries = await new Promise((resolve, reject) => {
+                    const req = indexedDB.open('TriggerAudioDB', 1);
+                    req.onsuccess = function() {
+                        const db = req.result;
+                        const tx = db.transaction('audio', 'readonly');
+                        const store = tx.objectStore('audio');
+                        const out = [];
+                        const cursorReq = store.openCursor();
+                        cursorReq.onsuccess = function(e) {
+                            const cursor = e.target.result;
+                            if (cursor) {
+                                // Stored values are ArrayBuffers (see saveAudioToDB), so
+                                // byteLength is the size — not .size.
+                                out.push({ key: cursor.key, size: cursor.value?.byteLength || 0 });
+                                cursor.continue();
+                            } else resolve(out);
+                        };
+                        cursorReq.onerror = function() {
+                            reject(cursorReq.error || new Error('cursor read failed'));
+                        };
+                    };
+                    req.onerror = function() {
+                        reject(req.error || new Error('could not open TriggerAudioDB'));
+                    };
+                    req.onblocked = function() {
+                        reject(new Error('TriggerAudioDB is blocked (another tab may have it open)'));
+                    };
+                });
+            } catch (err) {
+                console.error('Orphan scan failed:', err);
+                el.textContent = 'Could not check for unused sounds — try again.';
+                return;
+            }
+
+            const { keys, totalBytes } = window.persistence.findOrphanBlobs(triggers, entries);
+            el.textContent = '';                              // clear again, never innerHTML
             if (!keys.length) { el.textContent = 'No unused sounds.'; return; }
 
             const mb = (totalBytes / 1048576).toFixed(1);
@@ -7082,8 +7105,24 @@
             btn.textContent = 'Clean up';
             btn.addEventListener('click', async () => {
                 btn.disabled = true;
-                for (const k of keys) await removeAudioFromDB(k);
-                el.textContent = `Removed ${keys.length} unused sounds.`;
+                let removed = 0;
+                const failedKeys = [];
+                // Keep going after a single deletion fails — one bad key must not
+                // stop the rest, strand the button disabled, or throw an unhandled
+                // rejection. Report success and failure counts honestly.
+                for (const k of keys) {
+                    try {
+                        await removeAudioFromDB(k);
+                        removed++;
+                    } catch (err) {
+                        console.error(`Failed to remove orphaned blob ${k}:`, err);
+                        failedKeys.push(k);
+                    }
+                }
+                btn.disabled = false;                         // always re-enable so the user can retry
+                el.textContent = failedKeys.length
+                    ? `Removed ${removed}, could not remove ${failedKeys.length}.`
+                    : `Removed ${removed} unused sounds.`;
             });
             el.appendChild(btn);
         }
