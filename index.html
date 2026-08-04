@@ -1008,6 +1008,7 @@
                         
                         if (audioUrl) {
                             const audio = new Audio(audioUrl);
+                            connectSoundToMasterChain(audio, s.name);
                             
                             // Set output device if supported
                             if (audio.setSinkId && selectedOutputDeviceId && selectedOutputDeviceId !== 'default') {
@@ -1072,7 +1073,8 @@
                         for (const file of files) {
                             const blobKey = `${mainTrigger.word}--${Date.now()}--${file.name}`;
                             await saveAudioToDB(blobKey, file);
-                            
+                            await analyseAndStoreGainForBlob(file.name, file);
+
                             const newSound = { name: file.name, blobKey };
                             
                             // Add to all triggers in the group
@@ -2394,10 +2396,162 @@
             });
         }
         
-        // Stub for Task 8's real gain-levelling pair (load/saveGains). Until
-        // then this just exposes whatever's in localStorage so exportBackup()
-        // can work standalone.
-        function loadGains() { return JSON.parse(localStorage.getItem('soundGains') || '{}'); }
+        // ---- Per-sound levelling gain (Task 8) -----------------------------
+        // Analysed once per sound at import/add time, applied on every
+        // playback via a GainNode, with a master limiter as a safety net for
+        // overlapping sounds. See persistence.js for the pure math
+        // (analyseSamples / computeAutoGain / finalGain / TRIM_MIN_DB/MAX_DB).
+        function loadGains() {
+            try { return JSON.parse(localStorage.getItem('soundGains') || '{}'); }
+            catch (e) { return {}; }
+        }
+        function saveGains(gains) {
+            localStorage.setItem('soundGains', JSON.stringify(gains));
+        }
+
+        // Analyses EVERY channel of the buffer, not just channel 0 — a stereo
+        // clip whose energy sits mostly in one channel must still get a gain
+        // that can't clip either channel. Combine by taking the max peak and
+        // max rms across channels, then run that combined {rms, peak} through
+        // computeAutoGain once. analyseSamples itself stays single-channel
+        // (it's tested and correct for that) — the combination happens here.
+        function analyseAndStoreGain(name, audioBuffer) {
+            const gains = loadGains();
+            if (gains[name] && gains[name].autoGain != null) return gains[name];
+            let peak = 0;
+            let rms = 0;
+            for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
+                const stats = window.persistence.analyseSamples(audioBuffer.getChannelData(ch));
+                if (stats.peak > peak) peak = stats.peak;
+                if (stats.rms > rms) rms = stats.rms;
+            }
+            const entry = { autoGain: window.persistence.computeAutoGain({ rms, peak }), trimDb: 0 };
+            gains[name] = entry;
+            saveGains(gains);
+            return entry;
+        }
+
+        // Decodes a Blob/File just long enough to analyse it. Called once per
+        // sound at import/add time — never on every load. Degrades to unity
+        // gain (rather than blocking the sound being added) if decoding fails,
+        // since a soundboard that can't level a clip should still play it.
+        async function analyseAndStoreGainForBlob(name, blob) {
+            const gains = loadGains();
+            if (gains[name] && gains[name].autoGain != null) return gains[name];
+            let tempCtx;
+            try {
+                tempCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const arrayBuffer = await blob.arrayBuffer();
+                const audioBuffer = await tempCtx.decodeAudioData(arrayBuffer);
+                return analyseAndStoreGain(name, audioBuffer);
+            } catch (e) {
+                console.warn('Gain analysis failed for', name, '- using unity gain:', e);
+                return { autoGain: 1, trimDb: 0 };
+            } finally {
+                if (tempCtx) tempCtx.close().catch(() => {});
+            }
+        }
+
+        // ---- Master chain: masterGain -> masterLimiter -> destination -----
+        let playbackAudioContext = null;
+        let masterGain = null;
+        let masterLimiter = null;
+
+        function ensureMasterChain() {
+            if (playbackAudioContext) return;
+            playbackAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+            masterGain = playbackAudioContext.createGain();
+            masterLimiter = playbackAudioContext.createDynamicsCompressor();
+            // Safety net for two sounds firing at once — per-sound gain cannot fix overlap.
+            masterLimiter.threshold.value = -3;
+            masterLimiter.knee.value = 0;
+            masterLimiter.ratio.value = 20;
+            masterLimiter.attack.value = 0.002;
+            masterLimiter.release.value = 0.1;
+            masterGain.connect(masterLimiter);
+            masterLimiter.connect(playbackAudioContext.destination);
+        }
+
+        // Routes a playing <audio> element through its per-sound gain (auto +
+        // trim) and the master limiter, instead of straight to the speakers.
+        // Falls back to plain (uncorrected but still audible) playback on any
+        // Web Audio failure.
+        function connectSoundToMasterChain(audio, soundName) {
+            try {
+                ensureMasterChain();
+                if (selectedOutputDeviceId && selectedOutputDeviceId !== 'default' &&
+                    typeof playbackAudioContext.setSinkId === 'function') {
+                    playbackAudioContext.setSinkId(selectedOutputDeviceId).catch(() => {});
+                }
+                const gains = loadGains();
+                const entry = gains[soundName] || { autoGain: 1, trimDb: 0 };
+                const source = playbackAudioContext.createMediaElementSource(audio);
+                const g = playbackAudioContext.createGain();
+                g.gain.value = window.persistence.finalGain(entry.autoGain, entry.trimDb);
+                source.connect(g);
+                g.connect(masterGain);
+                if (playbackAudioContext.state === 'suspended') {
+                    playbackAudioContext.resume().catch(() => {});
+                }
+            } catch (e) {
+                console.warn('Levelling chain unavailable for', soundName, '- playing uncorrected:', e);
+            }
+        }
+
+        // Trim slider for a sound's row in the trigger list. `auto` resets
+        // the manual trim to 0 dB (the automatic gain still applies).
+        function makeTrimControls(soundName) {
+            const gains = loadGains();
+            const entry = gains[soundName] || { autoGain: 1, trimDb: 0 };
+
+            const slider = document.createElement('input');
+            slider.type = 'range';
+            slider.min = String(window.persistence.TRIM_MIN_DB);
+            slider.max = String(window.persistence.TRIM_MAX_DB);
+            slider.step = '0.5';
+            slider.value = String(entry.trimDb || 0);
+            slider.title = 'Trim (dB)';
+            slider.style.width = '70%';
+            slider.style.height = '14px';
+            slider.style.verticalAlign = 'middle';
+            slider.addEventListener('click', (e) => e.stopPropagation());
+            slider.addEventListener('input', (e) => {
+                e.stopPropagation();
+                setTrim(soundName, parseFloat(slider.value));
+            });
+
+            const reset = document.createElement('button');
+            reset.textContent = 'auto';
+            reset.title = 'Reset to automatic';
+            reset.type = 'button';
+            reset.style.fontSize = '0.65em';
+            reset.style.marginLeft = '4px';
+            reset.style.padding = '1px 4px';
+            reset.style.cursor = 'pointer';
+            reset.addEventListener('click', (e) => {
+                e.stopPropagation();
+                slider.value = '0';
+                setTrim(soundName, 0);
+            });
+
+            const wrap = document.createElement('span');
+            wrap.className = 'trim-controls';
+            wrap.style.display = 'flex';
+            wrap.style.alignItems = 'center';
+            wrap.style.padding = '0 4px';
+            wrap.appendChild(slider);
+            wrap.appendChild(reset);
+            return wrap;
+        }
+
+        function setTrim(soundName, trimDb) {
+            const gains = loadGains();
+            if (!gains[soundName]) gains[soundName] = { autoGain: 1, trimDb: 0 };
+            gains[soundName].trimDb = Math.max(
+                window.persistence.TRIM_MIN_DB,
+                Math.min(window.persistence.TRIM_MAX_DB, trimDb));
+            saveGains(gains);
+        }
 
         // One-file backup: everything a soundpack export has, plus settings,
         // shortcuts, favourites and volume — see persistence.js buildBackupManifest.
@@ -3923,6 +4077,7 @@
                         
                         if (audioUrl) {
                             const audio = new Audio(audioUrl);
+                            connectSoundToMasterChain(audio, sound.name);
                             
                             if (audio.setSinkId && selectedOutputDeviceId && selectedOutputDeviceId !== 'default') {
                                 audio.setSinkId(selectedOutputDeviceId).catch(err => 
@@ -4117,6 +4272,7 @@
                         
                         if (audioUrl) {
                             const audio = new Audio(audioUrl);
+                            connectSoundToMasterChain(audio, sound.name);
                             
                             if (audio.setSinkId && selectedOutputDeviceId && selectedOutputDeviceId !== 'default') {
                                 audio.setSinkId(selectedOutputDeviceId).catch(err => 
@@ -4263,6 +4419,7 @@
                         }
                             if (audioUrl) {
                                 const audio = new Audio(audioUrl);
+                                connectSoundToMasterChain(audio, s.name);
                             
                             // Set output device if supported
                             if (audio.setSinkId && selectedOutputDeviceId && selectedOutputDeviceId !== 'default') {
@@ -5286,7 +5443,8 @@
                 // Save to IndexedDB
                 const blobKey = `${triggerName}--${Date.now()}--${fileName}`;
                 await saveAudioToDB(blobKey, audioBlob);
-                
+                await analyseAndStoreGainForBlob(fileName, audioBlob);
+
                 // Create new trigger - SAME AS QUICK RECORD
                 const newTrigger = {
                     word: triggerName,
@@ -5857,7 +6015,8 @@
                 const outFileName = ensureExtension(currentTrimmerFileName, 'wav');
                 const blobKey = `${currentTrimmerName}--${Date.now()}--${outFileName}`;
                 await saveAudioToDB(blobKey, trimmedBlob);
-                
+                await analyseAndStoreGainForBlob(outFileName, trimmedBlob);
+
                 // Create new trigger
                 const newTrigger = {
                     word: currentTrimmerName,
@@ -6723,6 +6882,7 @@
                                 
                                 if (audioUrl) {
                                     const audio = new Audio(audioUrl);
+                                    connectSoundToMasterChain(audio, sound.name);
                                     
                                     if (audio.setSinkId && selectedOutputDeviceId && selectedOutputDeviceId !== 'default') {
                                         audio.setSinkId(selectedOutputDeviceId).catch(err => 
@@ -6780,7 +6940,13 @@
                             }
                         };
                         
-                        soundButtonsContainer.appendChild(soundBtn);
+                        const soundRow = document.createElement('div');
+                        soundRow.style.display = 'flex';
+                        soundRow.style.flexDirection = 'column';
+                        soundRow.style.gap = '2px';
+                        soundRow.appendChild(soundBtn);
+                        soundRow.appendChild(makeTrimControls(sound.name));
+                        soundButtonsContainer.appendChild(soundRow);
                     });
                     
                     // Add "Random" button at the end
@@ -6880,6 +7046,7 @@
                             
                             if (audioUrl) {
                                 const audio = new Audio(audioUrl);
+                                connectSoundToMasterChain(audio, s.name);
                                 
                                 // Enhanced error handling for audio loading
                                 audio.onerror = (e) => {
@@ -7289,6 +7456,7 @@
                                     // comparing this trigger's blobKey against storedBlobKeys.
                                     try {
                                         await saveAudioToDB(blobKey, sound.blob);
+                                        await analyseAndStoreGainForBlob(sound.name, sound.blob);
                                         storedBlobKeys.push(blobKey);
                                         console.log(`💾 Stored ${sound.name} in IndexedDB with key: ${blobKey}`);
                                     } catch (blobError) {
@@ -7683,6 +7851,7 @@
                     
                             if (audioUrl) {
                                 const audio = new Audio(audioUrl);
+                                connectSoundToMasterChain(audio, sound.name);
                                 
                                 if (audio.setSinkId && selectedOutputDeviceId && selectedOutputDeviceId !== 'default') {
                                     audio.setSinkId(selectedOutputDeviceId).catch(err => 
@@ -8344,6 +8513,7 @@
                             
                             if (audioUrl) {
                                 const audio = new Audio(audioUrl);
+                                connectSoundToMasterChain(audio, sound.name);
                                 
                                 if (audio.setSinkId && selectedOutputDeviceId && selectedOutputDeviceId !== 'default') {
                                     audio.setSinkId(selectedOutputDeviceId).catch(err =>
@@ -8623,6 +8793,7 @@
                     for (let file of files) {
                         const blobKey = `${word}--${Date.now()}--${file.name}`;
                         await saveAudioToDB(blobKey, file);
+                        await analyseAndStoreGainForBlob(file.name, file);
                         sounds.push({ name: file.name, blobKey });
                     }
                     
