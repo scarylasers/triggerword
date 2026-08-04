@@ -38,6 +38,11 @@ async def serve_index():
 async def serve_test_audio_meter():
     return FileResponse("test_audio_meter.html")
 
+# Serve the persistence module (imported by index.html as './persistence.js')
+@app.get("/persistence.js")
+async def serve_persistence():
+    return FileResponse("persistence.js", media_type="application/javascript")
+
 # Serve static files from the static directory
 static_dir = Path(__file__).parent / "static"
 if static_dir.exists():

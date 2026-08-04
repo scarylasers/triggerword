@@ -2490,6 +2490,50 @@
             }
         }
 
+        // analyseAndStoreGainForBlob only ever runs at add/import time. A
+        // user upgrading with an already-imported library (loaded via
+        // loadTriggersFromStorage or autoLoadLastZip, neither of which
+        // analyses anything) has zero gain entries and gets NO levelling
+        // until they re-import a full ZIP. This backfills: walk whatever
+        // ended up in the `triggers` global after startup's load, and analyse
+        // any sound that has a blobKey but no gain entry yet. Skips sounds
+        // that already have one, so this is a cheap no-op on every call after
+        // the first. Deliberately not awaited by its caller — runs in the
+        // background and reports progress via updateStatus so it never
+        // blocks startup.
+        async function backfillLevellingGains() {
+            const gains = loadGains();
+            const pending = [];
+            for (const trigger of triggers) {
+                for (const sound of (trigger.sounds || [])) {
+                    if (sound.blobKey && !(gains[sound.blobKey] && gains[sound.blobKey].autoGain != null)) {
+                        pending.push(sound);
+                    }
+                }
+            }
+            if (pending.length === 0) return;
+
+            console.log(`🎚️ Backfilling levelling gain for ${pending.length} sound(s) with no gain entry yet`);
+            let done = 0;
+            for (const sound of pending) {
+                try {
+                    let blob = sound.blob instanceof Blob ? sound.blob : null;
+                    if (!blob) {
+                        const arrayBuffer = await getAudioFromDB(sound.blobKey);
+                        if (arrayBuffer) blob = new Blob([arrayBuffer], { type: getMimeTypeFromSound(sound) });
+                    }
+                    if (blob) await analyseAndStoreGainForBlob(sound.blobKey, blob);
+                } catch (e) {
+                    console.warn('Backfill gain analysis failed for', sound.name, e);
+                }
+                done++;
+                if (done % 10 === 0 || done === pending.length) {
+                    updateStatus(`Levelling sounds… ${done}/${pending.length}`, 'info');
+                }
+            }
+            updateStatus(`✅ Levelling complete (${pending.length} sound${pending.length === 1 ? '' : 's'})`, 'success');
+        }
+
         // The volume (0-1) to set on a playing <audio> element for this
         // sound's stored gain/trim. Clamped because HTMLMediaElement.volume
         // throws if given a value outside [0, 1] — and manual trim can push
@@ -2557,13 +2601,45 @@
             saveGains(gains);
         }
 
+        // Remaps gains/trims restored from a backup ZIP onto the blobKeys
+        // handleZipFile() just minted for this import. nameKeyedGains is
+        // keyed by the sound's zip filename (see exportBackup's
+        // nameKeyedGains) — that name is stable across export/import, unlike
+        // blobKey, which is regenerated every time a ZIP is imported. Must be
+        // called AFTER handleZipFile() has updated the `triggers` global with
+        // the new blobKeys. Preserves autoGain and trimDb exactly as backed
+        // up, overwriting whatever analyseAndStoreGainForBlob computed fresh
+        // for the new key during the import.
+        function remapImportedGains(nameKeyedGains) {
+            if (!nameKeyedGains) return;
+            const gains = loadGains();
+            for (const trigger of triggers) {
+                for (const sound of (trigger.sounds || [])) {
+                    if (!sound.blobKey) continue;
+                    const backedUp = nameKeyedGains[sound.name];
+                    if (!backedUp) continue;
+                    gains[sound.blobKey] = {
+                        autoGain: backedUp.autoGain,
+                        trimDb: backedUp.trimDb,
+                    };
+                }
+            }
+            saveGains(gains);
+        }
+
         // One-file backup: everything a soundpack export has, plus settings,
         // shortcuts, favourites and volume — see persistence.js buildBackupManifest.
         async function exportBackup() {
             try {
                 updateStatus('Building backup…');
                 const zip = new JSZip();
-                const soundpack = { triggers: [] };
+                // soundpack.json must be a top-level ARRAY of trigger entries —
+                // that's what make_soundpack.py and handleZipFile() (both the
+                // plain-ZIP importer and the backup-restore path, which falls
+                // through to it) produce/expect. Wrapping it in a { triggers }
+                // object here made restored backups throw 'manifest.map is not
+                // a function' — see handleZipFile's `manifest.map(...)` below.
+                const soundpackTriggers = [];
                 // Sounds are identified by blobKey, not by name — two distinct
                 // blobKeys can legitimately share a filename. blobKeyToZipName
                 // remembers the in-zip name already claimed for a blobKey (so
@@ -2573,6 +2649,16 @@
                 // instead of silently overwriting the first sound's bytes.
                 const blobKeyToZipName = new Map();
                 const usedZipNames = new Set();
+                // Gains/trims are keyed by blobKey in localStorage (see the
+                // "Keying" note above loadGains), but handleZipFile() mints a
+                // brand-new blobKey for every sound on import — the old
+                // blobKey means nothing to the restored session. Re-key the
+                // exported gains by the same zipName written into
+                // soundpack.json (stable across export/import) so import can
+                // remap them onto the freshly minted blobKeys instead of
+                // orphaning them.
+                const gains = loadGains();
+                const nameKeyedGains = {};
 
                 for (const trigger of triggers) {
                     const entry = { word: trigger.word, sounds: [] };
@@ -2596,12 +2682,14 @@
                                 if (blob) zip.file(zipName, blob);
                             }
                         }
+                        const gainEntry = gains[gainKeyFor(sound)];
+                        if (gainEntry) nameKeyedGains[zipName] = gainEntry;
                         entry.sounds.push({ name: zipName });
                     }
-                    soundpack.triggers.push(entry);
+                    soundpackTriggers.push(entry);
                 }
 
-                zip.file('soundpack.json', JSON.stringify(soundpack, null, 2));
+                zip.file('soundpack.json', JSON.stringify(soundpackTriggers, null, 2));
                 zip.file('triggerword-backup.json', JSON.stringify(
                     window.persistence.buildBackupManifest({
                         globalSettings, keyboardShortcuts, controlShortcuts,
@@ -2609,7 +2697,7 @@
                         masterVolume: parseFloat(localStorage.getItem('masterVolume') || '1'),
                         selectedInputDevice: localStorage.getItem('selectedInputDevice'),
                         selectedOutputDevice: localStorage.getItem('selectedOutputDevice'),
-                        gains: loadGains(),
+                        gains: nameKeyedGains,
                     }), null, 2));
 
                 const blob = await zip.generateAsync({ type: 'blob' });
@@ -2654,8 +2742,12 @@
                         localStorage.setItem('selectedInputDevice', settings.selectedInputDevice);
                     if (settings.selectedOutputDevice != null)
                         localStorage.setItem('selectedOutputDevice', settings.selectedOutputDevice);
-                    if (settings.gains)
-                        localStorage.setItem('soundGains', JSON.stringify(settings.gains));
+                    // settings.gains is keyed by the zip's sound name (see
+                    // exportBackup's nameKeyedGains) — NOT by blobKey. Don't
+                    // write it straight to 'soundGains': handleZipFile() below
+                    // mints brand-new blobKeys for every sound, so these have
+                    // to be remapped onto those new keys once they exist (see
+                    // remapImportedGains after handleZipFile succeeds).
 
                     // handleZipFile() -> saveTriggersToStorage() -> saveFavoritesToStorage()
                     // writes favoriteTriggers/keyboardShortcuts back to localStorage FROM
@@ -2668,6 +2760,14 @@
                     loadFavoritesFromStorage();
                 }
                 const soundpackRestored = await handleZipFile(file); // sounds + triggers via the existing path
+                if (settings && settings.gains && soundpackRestored !== false) {
+                    // handleZipFile() has now minted fresh blobKeys and (via
+                    // analyseAndStoreGainForBlob) stored a freshly-computed
+                    // auto gain under each one. Overwrite those with the
+                    // backed-up entries so the user's manual trims survive the
+                    // restore instead of being silently lost.
+                    remapImportedGains(settings.gains);
+                }
                 if (soundpackRestored === false) {
                     showPersistenceWarning(
                         'Backup restore failed while loading sounds — settings were restored, ' +
@@ -7227,6 +7327,23 @@
             try {
                 entries = await new Promise((resolve, reject) => {
                     const req = indexedDB.open('TriggerAudioDB', 1);
+                    // Without this, opening the DB here (before saveAudioToDB
+                    // has ever run — e.g. clicking "Check for unused sounds"
+                    // on a fresh profile) creates TriggerAudioDB at version 1
+                    // with NO 'audio' store, since this was the only opener
+                    // missing the upgrade block. The transaction below then
+                    // throws inside onsuccess and the promise never settles —
+                    // and every later saveAudioToDB() call sees version 1
+                    // already exists, skips its own onupgradeneeded, and hangs
+                    // too. Keep this identical to saveAudioToDB's block so the
+                    // store always exists regardless of which function opens
+                    // the DB first.
+                    req.onupgradeneeded = function(e) {
+                        const db = e.target.result;
+                        if (!db.objectStoreNames.contains('audio')) {
+                            db.createObjectStore('audio');
+                        }
+                    };
                     req.onsuccess = function() {
                         const db = req.result;
                         const tx = db.transaction('audio', 'readonly');
@@ -7482,7 +7599,20 @@
                     // planSave/chooseRecordToPersist (persistence.js) make sure a save
                     // with missing blobs never overwrites a good previous record.
                     const previousRaw = localStorage.getItem('lastZipData');
-                    const previousRecord = previousRaw ? JSON.parse(previousRaw) : null;
+                    // A corrupt stored record protects nothing — treat it as
+                    // absent rather than letting JSON.parse throw here, which
+                    // would skip the setItem below and permanently block every
+                    // future save (the catch's "left untouched" message would
+                    // then be true forever, not just for this attempt).
+                    let previousRecord = null;
+                    if (previousRaw) {
+                        try {
+                            previousRecord = JSON.parse(previousRaw);
+                        } catch (parseError) {
+                            console.warn('⚠️ Previous lastZipData was corrupt, ignoring it:', parseError);
+                            previousRecord = null;
+                        }
+                    }
                     const { record, failures } = window.persistence.planSave(
                         triggersWithDBRefs, storedBlobKeys);
                     const { record: toPersist, warning } =
@@ -9509,7 +9639,12 @@
                 
                 renderTriggerList();
                 updateStatus('Ready - Ctrl+T: Time-shift, Ctrl+R: Record/Capture, Ctrl+1: Play latest, F1-F12/Alt+1-9: Favorites');
-                
+
+                // Not awaited on purpose — backfills levelling gain for any
+                // already-loaded sound that has none yet (see
+                // backfillLevellingGains) without delaying startup.
+                backfillLevellingGains();
+
                 // Show keyboard shortcuts help
                 console.log('🎹 Keyboard Shortcuts:');
                 console.log('   F1-F12: Trigger first 12 favorites');
