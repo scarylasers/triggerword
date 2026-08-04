@@ -19,3 +19,48 @@ export function shouldAutoLoad(stored) {
   }
   return { load: true, reason: `${stored.triggers.length} triggers stored` };
 }
+
+/**
+ * Build the record to store, and list any sounds whose blobs are absent.
+ * Does not decide what to persist — that is chooseRecordToPersist's job.
+ */
+export function planSave(triggers, storedBlobKeys) {
+  const stored = new Set(storedBlobKeys || []);
+  const failures = [];
+  for (const trigger of triggers || []) {
+    for (const sound of trigger.sounds || []) {
+      if (sound.blobKey && !stored.has(sound.blobKey)) {
+        failures.push({ word: trigger.word, name: sound.name });
+      }
+    }
+  }
+  return {
+    record: { triggers, timestamp: Date.now(), version: '2.0' },
+    failures,
+  };
+}
+
+/**
+ * Choose which record actually goes to storage.
+ *
+ * The rule that matters: a save with failures must never overwrite a good
+ * previous record. The old code wrote a record marking every sound
+ * 'missing_blob' over the working one, which is how layouts survived but
+ * audio did not.
+ */
+export function chooseRecordToPersist(newRecord, previousRecord, failures) {
+  if (!failures || failures.length === 0) {
+    return { record: newRecord, warning: null };
+  }
+  const names = failures.map(f => f.name).join(', ');
+  if (previousRecord) {
+    return {
+      record: previousRecord,
+      warning: `Could not store: ${names}. Kept the previous saved pack.`,
+    };
+  }
+  return {
+    record: newRecord,
+    warning: `Could not store: ${names}. Saved what did work.`,
+  };
+}
