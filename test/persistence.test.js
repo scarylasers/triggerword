@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { shouldAutoLoad, planSave, chooseRecordToPersist } from '../persistence.js';
+import { shouldAutoLoad, planSave, chooseRecordToPersist, buildBackupManifest, parseBackupManifest } from '../persistence.js';
 
 test('loads a stored pack regardless of age', () => {
   const tenYearsAgo = Date.now() - 3650 * 24 * 60 * 60 * 1000;
@@ -76,4 +76,42 @@ test('planSave decouples the returned record from mutations to the caller\'s arr
   mutableTriggers.push({ word: 'extra', sounds: [] });
   assert.equal(record.triggers.length, 1, 'record is not mutated by caller changes');
   assert.equal(mutableTriggers.length, 2, 'caller array was actually mutated');
+});
+
+const STATE = {
+  globalSettings: { minWordLength: 3 },
+  keyboardShortcuts: { a: 'yes' },
+  controlShortcuts: { b: 'stop' },
+  favoriteTriggers: ['yes'],
+  masterVolume: 0.8,
+  selectedInputDevice: 'mic-1',
+  selectedOutputDevice: 'out-1',
+  gains: { 'a.wav': { autoGain: 0.5, trimDb: 3 } },
+};
+
+test('manifest carries every field and a version', () => {
+  const m = buildBackupManifest(STATE);
+  assert.equal(m.version, '1.0');
+  assert.equal(m.masterVolume, 0.8);
+  assert.deepEqual(m.favoriteTriggers, ['yes']);
+  assert.equal(m.gains['a.wav'].trimDb, 3);
+});
+
+test('round trip preserves state', () => {
+  const parsed = parseBackupManifest(JSON.stringify(buildBackupManifest(STATE)));
+  assert.deepEqual(parsed.settings.globalSettings, STATE.globalSettings);
+  assert.equal(parsed.warnings.length, 0);
+});
+
+test('malformed json yields a warning, not a throw', () => {
+  const parsed = parseBackupManifest('{not json');
+  assert.equal(parsed.settings, null);
+  assert.match(parsed.warnings[0], /could not/i);
+});
+
+test('an unknown future version still parses what it recognises', () => {
+  const future = JSON.stringify({ version: '9.9', masterVolume: 0.5 });
+  const parsed = parseBackupManifest(future);
+  assert.equal(parsed.settings.masterVolume, 0.5);
+  assert.match(parsed.warnings[0], /newer/i);
 });

@@ -64,3 +64,36 @@ export function chooseRecordToPersist(newRecord, previousRecord, failures) {
     warning: `Could not store: ${names}. Saved what did work.`,
   };
 }
+
+export const BACKUP_MANIFEST_VERSION = '1.0';
+
+export function buildBackupManifest(state) {
+  return {
+    version: BACKUP_MANIFEST_VERSION,
+    exportedAt: new Date().toISOString(),
+    globalSettings: state.globalSettings ?? {},
+    keyboardShortcuts: state.keyboardShortcuts ?? {},
+    controlShortcuts: state.controlShortcuts ?? {},
+    favoriteTriggers: state.favoriteTriggers ?? [],
+    masterVolume: state.masterVolume ?? 1,
+    selectedInputDevice: state.selectedInputDevice ?? null,
+    selectedOutputDevice: state.selectedOutputDevice ?? null,
+    gains: state.gains ?? {},
+  };
+}
+
+export function parseBackupManifest(json) {
+  const warnings = [];
+  let raw;
+  try {
+    raw = JSON.parse(json);
+  } catch (e) {
+    return { settings: null, warnings: [`Could not read backup settings: ${e.message}`] };
+  }
+  if (raw.version && raw.version !== BACKUP_MANIFEST_VERSION) {
+    warnings.push(
+      `Backup was made by a newer version (${raw.version}); ` +
+      `restoring what this build understands.`);
+  }
+  return { settings: raw, warnings };
+}
