@@ -135,3 +135,36 @@ export function parseBackupManifest(json) {
   };
   return { settings, warnings };
 }
+
+// ---- levelling ----------------------------------------------------------
+// Targets from spec 5.4. RMS tracks perceived loudness; the peak ceiling
+// guarantees nothing clips, which is what actually makes a soundboard
+// unpleasant.
+export const TARGET_RMS = 0.1;                    // -20 dBFS
+export const PEAK_CEILING = 0.8912509381337456;   // -1 dBFS
+export const TRIM_MIN_DB = -12;
+export const TRIM_MAX_DB = 12;
+
+export function analyseSamples(channelData) {
+  let sumSquares = 0;
+  let peak = 0;
+  for (let i = 0; i < channelData.length; i++) {
+    const s = channelData[i];
+    sumSquares += s * s;
+    const a = s < 0 ? -s : s;
+    if (a > peak) peak = a;
+  }
+  const rms = channelData.length ? Math.sqrt(sumSquares / channelData.length) : 0;
+  return { rms, peak };
+}
+
+/** Whichever constraint binds, wins. Silence is left at unity gain. */
+export function computeAutoGain({ rms, peak }) {
+  if (!rms || !peak) return 1;
+  return Math.min(TARGET_RMS / rms, PEAK_CEILING / peak);
+}
+
+export function finalGain(autoGain, trimDb) {
+  const clamped = Math.max(TRIM_MIN_DB, Math.min(TRIM_MAX_DB, trimDb || 0));
+  return autoGain * Math.pow(10, clamped / 20);
+}

@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { shouldAutoLoad, planSave, chooseRecordToPersist, buildBackupManifest, parseBackupManifest, findOrphanBlobs } from '../persistence.js';
+import {
+  shouldAutoLoad, planSave, chooseRecordToPersist, buildBackupManifest, parseBackupManifest, findOrphanBlobs,
+  analyseSamples, computeAutoGain, finalGain,
+  TARGET_RMS, PEAK_CEILING, TRIM_MIN_DB, TRIM_MAX_DB,
+} from '../persistence.js';
 
 test('loads a stored pack regardless of age', () => {
   const tenYearsAgo = Date.now() - 3650 * 24 * 60 * 60 * 1000;
@@ -155,4 +159,46 @@ test('reports nothing when every blob is referenced', () => {
 test('treats an empty trigger list as referencing nothing', () => {
   const { keys } = findOrphanBlobs([], [{ key: 'k1', size: 100 }]);
   assert.deepEqual(keys, ['k1']);
+});
+
+test('constants match the spec', () => {
+  assert.ok(Math.abs(TARGET_RMS - 0.1) < 1e-9);                  // -20 dBFS
+  assert.ok(Math.abs(PEAK_CEILING - 0.8912509381337456) < 1e-9); // -1 dBFS
+  assert.equal(TRIM_MIN_DB, -12);
+  assert.equal(TRIM_MAX_DB, 12);
+});
+
+test('analyseSamples computes rms and peak', () => {
+  const data = Float32Array.from([0.5, -0.5, 0.5, -0.5]);
+  const { rms, peak } = analyseSamples(data);
+  assert.ok(Math.abs(rms - 0.5) < 1e-6);
+  assert.ok(Math.abs(peak - 0.5) < 1e-6);
+});
+
+test('a quiet sound is boosted toward the target', () => {
+  const gain = computeAutoGain({ rms: 0.01, peak: 0.02 });
+  assert.ok(gain > 1, 'quiet sound should be turned up');
+});
+
+test('the peak ceiling wins over the rms target when it must', () => {
+  // rms alone says boost 10x; peak 0.5 would then reach 5.0 and clip badly.
+  const gain = computeAutoGain({ rms: 0.01, peak: 0.5 });
+  assert.ok(gain * 0.5 <= PEAK_CEILING + 1e-9, 'must not exceed the ceiling');
+});
+
+test('silence is left alone rather than dividing by zero', () => {
+  assert.equal(computeAutoGain({ rms: 0, peak: 0 }), 1);
+});
+
+test('trim of 0 dB changes nothing', () => {
+  assert.ok(Math.abs(finalGain(0.5, 0) - 0.5) < 1e-9);
+});
+
+test('+6 dB trim roughly doubles the gain', () => {
+  assert.ok(Math.abs(finalGain(0.5, 6) - 1.0) < 0.01);
+});
+
+test('trim is clamped to the allowed range', () => {
+  assert.equal(finalGain(1, 99), finalGain(1, TRIM_MAX_DB));
+  assert.equal(finalGain(1, -99), finalGain(1, TRIM_MIN_DB));
 });
