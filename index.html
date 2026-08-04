@@ -5,6 +5,11 @@
     <link rel="stylesheet" href="static/style.css">
     <!-- JSZip CDN for ZIP import -->
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <script type="module">
+      import * as persistence from './persistence.js';
+      window.persistence = persistence;
+      window.dispatchEvent(new Event('persistence-ready'));
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TriggerWord</title>
     <link rel="icon" href="/favicon.ico">
@@ -13,6 +18,14 @@
     <link rel="icon" type="image/png" href="static/images/Triggerword_logo_medium.png">
 </head>
 <body>
+    <div id="persistenceWarning" style="display:none;position:sticky;top:0;z-index:9999;
+         background:#3a2a00;color:#ffd479;border-bottom:1px solid #7a5a00;
+         padding:10px 14px;font-size:14px;">
+      <span id="persistenceWarningText"></span>
+      <button id="persistenceWarningDismiss"
+              style="float:right;background:none;border:1px solid #7a5a00;color:#ffd479;
+                     border-radius:4px;cursor:pointer;padding:2px 8px;">dismiss</button>
+    </div>
     <!-- Logo section -->
     <div class="logo-container">
         <img src="static/images/Triggerword_logo_medium.png" alt="TriggerWord Logo" class="app-logo">
@@ -303,13 +316,24 @@
                     <button id="exportGlobalSettingsBtn" type="button" style="background: #4caf50; color: white;">📤 Export All Settings</button>
                     <button id="importGlobalSettingsBtn" type="button" style="background: #2196f3; color: white;">📥 Import Settings</button>
                     <input type="file" id="importGlobalSettingsInput" style="display:none" accept=".json">
+                    <button id="exportBackupBtn" type="button" style="background: #4caf50; color: white;">Export backup (everything)</button>
+                    <input type="file" id="importBackupInput" accept=".zip" style="display:none">
+                    <button id="importBackupBtn" type="button" style="background: #2196f3; color: white;">Import backup</button>
                 </div>
                 
                 <div style="margin-top: 10px;">
                     <button id="resetAllSettingsBtn" type="button" style="background: #ff5722; color: white;">🔄 Reset All to Defaults</button>
                 </div>
-                
+
                 <div id="globalSettingsImportExportStatus" style="margin-top: 8px; font-size: 0.9em; color: #666;"></div>
+            </div>
+
+            <div class="settings-section" style="margin-top: 20px; border-top: 1px solid #ddd; padding-top: 15px;">
+                <h4>🧹 Storage</h4>
+                <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">Audio blobs that no trigger references anymore. Nothing is deleted until you click Clean up.</p>
+
+                <button id="checkOrphansBtn" type="button" style="background: #2196f3; color: white;">Check for unused sounds</button>
+                <div id="orphanReport" style="margin-top: 8px; font-size: 0.9em; color: #666;"></div>
             </div>
         </div>
     </div>
@@ -413,6 +437,19 @@
         const startBtn = document.getElementById('startBtn');
         const pauseBtn = document.getElementById('pauseBtn');
         const resumeBtn = document.getElementById('resumeBtn');
+
+        function showPersistenceWarning(message) {
+            const bar = document.getElementById('persistenceWarning');
+            const text = document.getElementById('persistenceWarningText');
+            if (!bar || !text) { console.warn(message); return; }
+            text.textContent = message;          // textContent, never innerHTML
+            bar.style.display = '';
+            console.warn(message);
+        }
+        document.getElementById('persistenceWarningDismiss')
+            ?.addEventListener('click', () => {
+                document.getElementById('persistenceWarning').style.display = 'none';
+            });
 
         // --- Modal logic for editing card details ---
         async function ensureModalLoaded() {
@@ -979,7 +1016,7 @@
                             }
                             
                             // Set master volume
-                            audio.volume = masterVolume;
+                            audio.volume = Math.max(0, Math.min(1, masterVolume * levelledVolumeFor(s)));
                             
                             audio.play().catch(err => console.error('Audio play error:', err));
                             audio.onended = () => URL.revokeObjectURL(audioUrl);
@@ -1035,7 +1072,8 @@
                         for (const file of files) {
                             const blobKey = `${mainTrigger.word}--${Date.now()}--${file.name}`;
                             await saveAudioToDB(blobKey, file);
-                            
+                            await analyseAndStoreGainForBlob(blobKey, file);
+
                             const newSound = { name: file.name, blobKey };
                             
                             // Add to all triggers in the group
@@ -2357,6 +2395,391 @@
             });
         }
         
+        // ---- Per-sound levelling gain (Task 8) -----------------------------
+        // Analysed once per sound at import/add time, applied on every
+        // playback via audio.volume (NOT a GainNode / Web Audio capture — see
+        // "Routing" note below). See persistence.js for the pure math
+        // (analyseSamples / computeAutoGain / finalGain / TRIM_MIN_DB/MAX_DB).
+        //
+        // Routing: an earlier version of this feature captured every playing
+        // <audio> element into a Web Audio graph (a MediaElementSource node
+        // feeding a master gain + compressor-limiter). That's real Web Audio
+        // capture, and per the spec it makes the ELEMENT's own setSinkId()
+        // inert — output is instead governed by the AudioContext, which
+        // (outside a Chromium-only, unverified AudioContext.setSinkId call)
+        // always renders to the system default device. This user routes
+        // soundboard audio to a specific device ("SOUNDBOARD out (VB-Audio
+        // Virtual Cable)") for streaming, so that's a real regression, not a
+        // theoretical one. Per the user's ruling: no Web Audio capture, no
+        // master limiter. Gain is applied via the plain HTMLMediaElement
+        // `.volume` property instead, which every existing per-element
+        // setSinkId() call keeps working with untouched. The trade-off,
+        // accepted by the user: no shared limiter across simultaneously
+        // firing sounds. To keep this safe without a limiter, autoGain is
+        // clamped to a maximum of 1 below — clips are only ever attenuated
+        // toward the target, never boosted past unity.
+        //
+        // Keying: gains are keyed by blobKey when the sound has one, falling
+        // back to name only when it doesn't. Sounds are identified by
+        // blobKey elsewhere in this app (two blobKeys can legitimately share
+        // a filename — see exportBackup's blobKeyToZipName comment) — keying
+        // by name alone would let a second same-named sound silently inherit
+        // the first one's gain/trim.
+        function loadGains() {
+            try { return JSON.parse(localStorage.getItem('soundGains') || '{}'); }
+            catch (e) { return {}; }
+        }
+        function saveGains(gains) {
+            localStorage.setItem('soundGains', JSON.stringify(gains));
+        }
+
+        // The key gains/trim are stored and looked up under for a given
+        // sound object: its blobKey if it has one, else its name.
+        function gainKeyFor(sound) {
+            return (sound && (sound.blobKey || sound.name)) || '';
+        }
+
+        // Analyses EVERY channel of the buffer, not just channel 0 — a stereo
+        // clip whose energy sits mostly in one channel must still get a gain
+        // that can't clip either channel. Combine by taking the max peak and
+        // max rms across channels, then run that combined {rms, peak} through
+        // computeAutoGain once. analyseSamples itself stays single-channel
+        // (it's tested and correct for that) — the combination happens here.
+        //
+        // autoGain is then clamped to a maximum of 1: a clip quieter than
+        // TARGET_RMS is left alone rather than boosted. Without a shared
+        // limiter (see routing note above), boosting is what would risk
+        // clipping when a boosted quiet sound and a loud sound overlap.
+        function analyseAndStoreGain(key, audioBuffer) {
+            const gains = loadGains();
+            if (gains[key] && gains[key].autoGain != null) return gains[key];
+            let peak = 0;
+            let rms = 0;
+            for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
+                const stats = window.persistence.analyseSamples(audioBuffer.getChannelData(ch));
+                if (stats.peak > peak) peak = stats.peak;
+                if (stats.rms > rms) rms = stats.rms;
+            }
+            const autoGain = Math.min(1, window.persistence.computeAutoGain({ rms, peak }));
+            const entry = { autoGain, trimDb: 0 };
+            gains[key] = entry;
+            saveGains(gains);
+            return entry;
+        }
+
+        // Decodes a Blob/File just long enough to analyse it. Called once per
+        // sound at import/add time — never on every load. Degrades to unity
+        // gain (rather than blocking the sound being added) if decoding fails,
+        // since a soundboard that can't level a clip should still play it.
+        // This AudioContext is used purely for decodeAudioData — it never
+        // touches a playing element and has no bearing on output routing.
+        async function analyseAndStoreGainForBlob(key, blob) {
+            const gains = loadGains();
+            if (gains[key] && gains[key].autoGain != null) return gains[key];
+            let tempCtx;
+            try {
+                tempCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const arrayBuffer = await blob.arrayBuffer();
+                const audioBuffer = await tempCtx.decodeAudioData(arrayBuffer);
+                return analyseAndStoreGain(key, audioBuffer);
+            } catch (e) {
+                console.warn('Gain analysis failed for', key, '- using unity gain:', e);
+                return { autoGain: 1, trimDb: 0 };
+            } finally {
+                if (tempCtx) tempCtx.close().catch(() => {});
+            }
+        }
+
+        // analyseAndStoreGainForBlob only ever runs at add/import time. A
+        // user upgrading with an already-imported library (loaded via
+        // loadTriggersFromStorage or autoLoadLastZip, neither of which
+        // analyses anything) has zero gain entries and gets NO levelling
+        // until they re-import a full ZIP. This backfills: walk whatever
+        // ended up in the `triggers` global after startup's load, and analyse
+        // any sound that has a blobKey but no gain entry yet. Skips sounds
+        // that already have one, so this is a cheap no-op on every call after
+        // the first. Deliberately not awaited by its caller — runs in the
+        // background and reports progress via updateStatus so it never
+        // blocks startup.
+        async function backfillLevellingGains() {
+            const gains = loadGains();
+            const pending = [];
+            for (const trigger of triggers) {
+                for (const sound of (trigger.sounds || [])) {
+                    if (sound.blobKey && !(gains[sound.blobKey] && gains[sound.blobKey].autoGain != null)) {
+                        pending.push(sound);
+                    }
+                }
+            }
+            if (pending.length === 0) return;
+
+            console.log(`🎚️ Backfilling levelling gain for ${pending.length} sound(s) with no gain entry yet`);
+            let done = 0;
+            for (const sound of pending) {
+                try {
+                    let blob = sound.blob instanceof Blob ? sound.blob : null;
+                    if (!blob) {
+                        const arrayBuffer = await getAudioFromDB(sound.blobKey);
+                        if (arrayBuffer) blob = new Blob([arrayBuffer], { type: getMimeTypeFromSound(sound) });
+                    }
+                    if (blob) await analyseAndStoreGainForBlob(sound.blobKey, blob);
+                } catch (e) {
+                    console.warn('Backfill gain analysis failed for', sound.name, e);
+                }
+                done++;
+                if (done % 10 === 0 || done === pending.length) {
+                    updateStatus(`Levelling sounds… ${done}/${pending.length}`, 'info');
+                }
+            }
+            updateStatus(`✅ Levelling complete (${pending.length} sound${pending.length === 1 ? '' : 's'})`, 'success');
+        }
+
+        // The volume (0-1) to set on a playing <audio> element for this
+        // sound's stored gain/trim. Clamped because HTMLMediaElement.volume
+        // throws if given a value outside [0, 1] — and manual trim can push
+        // finalGain() above 1 even though autoGain alone cannot.
+        function levelledVolumeFor(sound) {
+            const gains = loadGains();
+            const entry = gains[gainKeyFor(sound)] || { autoGain: 1, trimDb: 0 };
+            const gain = window.persistence.finalGain(entry.autoGain, entry.trimDb);
+            return Math.max(0, Math.min(1, gain));
+        }
+
+        // Trim slider for a sound's row in the trigger list. `auto` resets
+        // the manual trim to 0 dB (the automatic gain still applies).
+        function makeTrimControls(sound) {
+            const key = gainKeyFor(sound);
+            const gains = loadGains();
+            const entry = gains[key] || { autoGain: 1, trimDb: 0 };
+
+            const slider = document.createElement('input');
+            slider.type = 'range';
+            slider.min = String(window.persistence.TRIM_MIN_DB);
+            slider.max = String(window.persistence.TRIM_MAX_DB);
+            slider.step = '0.5';
+            slider.value = String(entry.trimDb || 0);
+            slider.title = 'Trim (dB)';
+            slider.style.width = '70%';
+            slider.style.height = '14px';
+            slider.style.verticalAlign = 'middle';
+            slider.addEventListener('click', (e) => e.stopPropagation());
+            slider.addEventListener('input', (e) => {
+                e.stopPropagation();
+                setTrim(key, parseFloat(slider.value));
+            });
+
+            const reset = document.createElement('button');
+            reset.textContent = 'auto';
+            reset.title = 'Reset to automatic';
+            reset.type = 'button';
+            reset.style.fontSize = '0.65em';
+            reset.style.marginLeft = '4px';
+            reset.style.padding = '1px 4px';
+            reset.style.cursor = 'pointer';
+            reset.addEventListener('click', (e) => {
+                e.stopPropagation();
+                slider.value = '0';
+                setTrim(key, 0);
+            });
+
+            const wrap = document.createElement('span');
+            wrap.className = 'trim-controls';
+            wrap.style.display = 'flex';
+            wrap.style.alignItems = 'center';
+            wrap.style.padding = '0 4px';
+            wrap.appendChild(slider);
+            wrap.appendChild(reset);
+            return wrap;
+        }
+
+        function setTrim(key, trimDb) {
+            const gains = loadGains();
+            if (!gains[key]) gains[key] = { autoGain: 1, trimDb: 0 };
+            gains[key].trimDb = Math.max(
+                window.persistence.TRIM_MIN_DB,
+                Math.min(window.persistence.TRIM_MAX_DB, trimDb));
+            saveGains(gains);
+        }
+
+        // Remaps gains/trims restored from a backup ZIP onto the blobKeys
+        // handleZipFile() just minted for this import. nameKeyedGains is
+        // keyed by the sound's zip filename (see exportBackup's
+        // nameKeyedGains) — that name is stable across export/import, unlike
+        // blobKey, which is regenerated every time a ZIP is imported. Must be
+        // called AFTER handleZipFile() has updated the `triggers` global with
+        // the new blobKeys. Preserves autoGain and trimDb exactly as backed
+        // up, overwriting whatever analyseAndStoreGainForBlob computed fresh
+        // for the new key during the import.
+        function remapImportedGains(nameKeyedGains) {
+            if (!nameKeyedGains) return;
+            const gains = loadGains();
+            for (const trigger of triggers) {
+                for (const sound of (trigger.sounds || [])) {
+                    if (!sound.blobKey) continue;
+                    const backedUp = nameKeyedGains[sound.name];
+                    if (!backedUp) continue;
+                    gains[sound.blobKey] = {
+                        autoGain: backedUp.autoGain,
+                        trimDb: backedUp.trimDb,
+                    };
+                }
+            }
+            saveGains(gains);
+        }
+
+        // One-file backup: everything a soundpack export has, plus settings,
+        // shortcuts, favourites and volume — see persistence.js buildBackupManifest.
+        async function exportBackup() {
+            try {
+                updateStatus('Building backup…');
+                const zip = new JSZip();
+                // soundpack.json must be a top-level ARRAY of trigger entries —
+                // that's what make_soundpack.py and handleZipFile() (both the
+                // plain-ZIP importer and the backup-restore path, which falls
+                // through to it) produce/expect. Wrapping it in a { triggers }
+                // object here made restored backups throw 'manifest.map is not
+                // a function' — see handleZipFile's `manifest.map(...)` below.
+                const soundpackTriggers = [];
+                // Sounds are identified by blobKey, not by name — two distinct
+                // blobKeys can legitimately share a filename. blobKeyToZipName
+                // remembers the in-zip name already claimed for a blobKey (so
+                // it's written once and every trigger referencing it points at
+                // the same file); usedZipNames tracks claimed filenames so a
+                // same-named-but-different blobKey gets a disambiguated one
+                // instead of silently overwriting the first sound's bytes.
+                const blobKeyToZipName = new Map();
+                const usedZipNames = new Set();
+                // Gains/trims are keyed by blobKey in localStorage (see the
+                // "Keying" note above loadGains), but handleZipFile() mints a
+                // brand-new blobKey for every sound on import — the old
+                // blobKey means nothing to the restored session. Re-key the
+                // exported gains by the same zipName written into
+                // soundpack.json (stable across export/import) so import can
+                // remap them onto the freshly minted blobKeys instead of
+                // orphaning them.
+                const gains = loadGains();
+                const nameKeyedGains = {};
+
+                for (const trigger of triggers) {
+                    const entry = { word: trigger.word, sounds: [] };
+                    for (const sound of (trigger.sounds || [])) {
+                        let zipName = sound.name;
+                        if (sound.blobKey) {
+                            if (blobKeyToZipName.has(sound.blobKey)) {
+                                zipName = blobKeyToZipName.get(sound.blobKey);
+                            } else {
+                                if (usedZipNames.has(zipName)) {
+                                    const dot = zipName.lastIndexOf('.');
+                                    const stem = dot === -1 ? zipName : zipName.slice(0, dot);
+                                    const ext = dot === -1 ? '' : zipName.slice(dot);
+                                    let n = 2;
+                                    while (usedZipNames.has(`${stem}_${n}${ext}`)) n++;
+                                    zipName = `${stem}_${n}${ext}`;
+                                }
+                                usedZipNames.add(zipName);
+                                blobKeyToZipName.set(sound.blobKey, zipName);
+                                const blob = await getAudioFromDB(sound.blobKey);
+                                if (blob) zip.file(zipName, blob);
+                            }
+                        }
+                        const gainEntry = gains[gainKeyFor(sound)];
+                        if (gainEntry) nameKeyedGains[zipName] = gainEntry;
+                        entry.sounds.push({ name: zipName });
+                    }
+                    soundpackTriggers.push(entry);
+                }
+
+                zip.file('soundpack.json', JSON.stringify(soundpackTriggers, null, 2));
+                zip.file('triggerword-backup.json', JSON.stringify(
+                    window.persistence.buildBackupManifest({
+                        globalSettings, keyboardShortcuts, controlShortcuts,
+                        favoriteTriggers: [...favoriteTriggers],
+                        masterVolume: parseFloat(localStorage.getItem('masterVolume') || '1'),
+                        selectedInputDevice: localStorage.getItem('selectedInputDevice'),
+                        selectedOutputDevice: localStorage.getItem('selectedOutputDevice'),
+                        gains: nameKeyedGains,
+                    }), null, 2));
+
+                const blob = await zip.generateAsync({ type: 'blob' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `triggerword-backup-${new Date().toISOString().slice(0,10)}.zip`;
+                a.click();
+                URL.revokeObjectURL(url);
+                updateStatus('✅ Backup exported', 'success');
+            } catch (e) {
+                showPersistenceWarning(`Backup failed: ${e.message}. Nothing was changed.`);
+            }
+        }
+
+        // Restores a backup ZIP. If triggerword-backup.json is absent (an old
+        // plain soundpack), falls back to the existing handleZipFile() path
+        // unchanged — this is the "old pack still imports as today" guarantee.
+        async function importBackup(file) {
+            try {
+                const zip = await JSZip.loadAsync(file);
+                const manifestFile = zip.file('triggerword-backup.json');
+                if (!manifestFile) {
+                    updateStatus('No backup settings in this ZIP — importing as a soundpack');
+                    return handleZipFile(file);       // existing soundpack path, unchanged
+                }
+                const { settings, warnings } =
+                    window.persistence.parseBackupManifest(await manifestFile.async('string'));
+                warnings.forEach(showPersistenceWarning);
+                if (settings) {
+                    if (settings.globalSettings)
+                        localStorage.setItem('globalSettings', JSON.stringify(settings.globalSettings));
+                    if (settings.keyboardShortcuts)
+                        localStorage.setItem('keyboardShortcuts', JSON.stringify(settings.keyboardShortcuts));
+                    if (settings.controlShortcuts)
+                        localStorage.setItem('controlShortcuts', JSON.stringify(settings.controlShortcuts));
+                    if (settings.favoriteTriggers)
+                        localStorage.setItem('favoriteTriggers', JSON.stringify(settings.favoriteTriggers));
+                    if (settings.masterVolume != null)
+                        localStorage.setItem('masterVolume', String(settings.masterVolume));
+                    if (settings.selectedInputDevice != null)
+                        localStorage.setItem('selectedInputDevice', settings.selectedInputDevice);
+                    if (settings.selectedOutputDevice != null)
+                        localStorage.setItem('selectedOutputDevice', settings.selectedOutputDevice);
+                    // settings.gains is keyed by the zip's sound name (see
+                    // exportBackup's nameKeyedGains) — NOT by blobKey. Don't
+                    // write it straight to 'soundGains': handleZipFile() below
+                    // mints brand-new blobKeys for every sound, so these have
+                    // to be remapped onto those new keys once they exist (see
+                    // remapImportedGains after handleZipFile succeeds).
+
+                    // handleZipFile() -> saveTriggersToStorage() -> saveFavoritesToStorage()
+                    // writes favoriteTriggers/keyboardShortcuts back to localStorage FROM
+                    // the in-memory variables. Without this, the restored values just
+                    // written above get overwritten by whatever was in memory before the
+                    // restore (e.g. empty, after a cleared-storage reload) — same call,
+                    // before any reload. Re-run the existing load path now that
+                    // localStorage holds the restored values, so the in-memory state
+                    // matches and that later write is a no-op instead of data loss.
+                    loadFavoritesFromStorage();
+                }
+                const soundpackRestored = await handleZipFile(file); // sounds + triggers via the existing path
+                if (settings && settings.gains && soundpackRestored !== false) {
+                    // handleZipFile() has now minted fresh blobKeys and (via
+                    // analyseAndStoreGainForBlob) stored a freshly-computed
+                    // auto gain under each one. Overwrite those with the
+                    // backed-up entries so the user's manual trims survive the
+                    // restore instead of being silently lost.
+                    remapImportedGains(settings.gains);
+                }
+                if (soundpackRestored === false) {
+                    showPersistenceWarning(
+                        'Backup restore failed while loading sounds — settings were restored, ' +
+                        'but sounds and triggers were not. See status above for the error.');
+                    return;
+                }
+                updateStatus('✅ Backup restored', 'success');
+            } catch (e) {
+                showPersistenceWarning(`Restore failed: ${e.message}. Nothing was changed.`);
+            }
+        }
+
         // Global Settings Export/Import Functions
         function exportGlobalSettings() {
             try {
@@ -3764,7 +4187,7 @@
                                     console.warn('Could not set audio output device:', err));
                             }
                             
-                            audio.volume = masterVolume;
+                            audio.volume = Math.max(0, Math.min(1, masterVolume * levelledVolumeFor(sound)));
                             audio.play().catch(err => {
                                 console.error('Audio play error:', err);
                                 card.classList.remove('trigger-playing');
@@ -3958,7 +4381,7 @@
                                     console.warn('Could not set audio output device:', err));
                             }
                             
-                            audio.volume = masterVolume;
+                            audio.volume = Math.max(0, Math.min(1, masterVolume * levelledVolumeFor(sound)));
                             audio.play().catch(err => {
                                 console.error('Audio play error:', err);
                                 card.classList.remove('trigger-playing');
@@ -4106,7 +4529,7 @@
                             }
                             
                             // Set master volume
-                            audio.volume = masterVolume;
+                            audio.volume = Math.max(0, Math.min(1, masterVolume * levelledVolumeFor(s)));
                             
                             audio.play().catch(err => console.error('Audio play error:', err));
                             
@@ -5121,7 +5544,8 @@
                 // Save to IndexedDB
                 const blobKey = `${triggerName}--${Date.now()}--${fileName}`;
                 await saveAudioToDB(blobKey, audioBlob);
-                
+                await analyseAndStoreGainForBlob(blobKey, audioBlob);
+
                 // Create new trigger - SAME AS QUICK RECORD
                 const newTrigger = {
                     word: triggerName,
@@ -5692,7 +6116,8 @@
                 const outFileName = ensureExtension(currentTrimmerFileName, 'wav');
                 const blobKey = `${currentTrimmerName}--${Date.now()}--${outFileName}`;
                 await saveAudioToDB(blobKey, trimmedBlob);
-                
+                await analyseAndStoreGainForBlob(blobKey, trimmedBlob);
+
                 // Create new trigger
                 const newTrigger = {
                     word: currentTrimmerName,
@@ -6564,7 +6989,7 @@
                                             console.warn('Could not set audio output device:', err));
                                     }
                                     
-                                    audio.volume = masterVolume;
+                                    audio.volume = Math.max(0, Math.min(1, masterVolume * levelledVolumeFor(sound)));
                                     audio.play().catch(err => console.error('Audio play error:', err));
                                     
                                     audio.onended = () => {
@@ -6615,7 +7040,13 @@
                             }
                         };
                         
-                        soundButtonsContainer.appendChild(soundBtn);
+                        const soundRow = document.createElement('div');
+                        soundRow.style.display = 'flex';
+                        soundRow.style.flexDirection = 'column';
+                        soundRow.style.gap = '2px';
+                        soundRow.appendChild(soundBtn);
+                        soundRow.appendChild(makeTrimControls(sound));
+                        soundButtonsContainer.appendChild(soundRow);
                     });
                     
                     // Add "Random" button at the end
@@ -6755,7 +7186,7 @@
                                 }
                                 
                                 // Set master volume
-                                audio.volume = masterVolume;
+                                audio.volume = Math.max(0, Math.min(1, masterVolume * levelledVolumeFor(s)));
                                 
                                 audio.play().catch(err => {
                                     console.error('Audio play error:', err);
@@ -6879,6 +7310,106 @@
             });
         }
         
+        // Enumerate every blob in IndexedDB, hand plain {key, size} data to
+        // persistence.js's findOrphanBlobs (pure — does no IO), then render
+        // what came back. Deletion only happens if the user clicks the
+        // "Clean up" button this builds — findOrphanBlobs itself never deletes.
+        async function reportOrphans() {
+            const el = document.getElementById('orphanReport');
+            el.textContent = '';                              // clear, never innerHTML
+
+            // A failed/blocked scan must NOT be indistinguishable from "nothing to
+            // clean" — that is exactly the "concluded all-clear from an error"
+            // failure mode this project exists to avoid. Reject on any DB/cursor
+            // error instead of quietly resolving to [], and report the failure
+            // honestly rather than fabricating a zero count.
+            let entries;
+            try {
+                entries = await new Promise((resolve, reject) => {
+                    const req = indexedDB.open('TriggerAudioDB', 1);
+                    // Without this, opening the DB here (before saveAudioToDB
+                    // has ever run — e.g. clicking "Check for unused sounds"
+                    // on a fresh profile) creates TriggerAudioDB at version 1
+                    // with NO 'audio' store, since this was the only opener
+                    // missing the upgrade block. The transaction below then
+                    // throws inside onsuccess and the promise never settles —
+                    // and every later saveAudioToDB() call sees version 1
+                    // already exists, skips its own onupgradeneeded, and hangs
+                    // too. Keep this identical to saveAudioToDB's block so the
+                    // store always exists regardless of which function opens
+                    // the DB first.
+                    req.onupgradeneeded = function(e) {
+                        const db = e.target.result;
+                        if (!db.objectStoreNames.contains('audio')) {
+                            db.createObjectStore('audio');
+                        }
+                    };
+                    req.onsuccess = function() {
+                        const db = req.result;
+                        const tx = db.transaction('audio', 'readonly');
+                        const store = tx.objectStore('audio');
+                        const out = [];
+                        const cursorReq = store.openCursor();
+                        cursorReq.onsuccess = function(e) {
+                            const cursor = e.target.result;
+                            if (cursor) {
+                                // Stored values are ArrayBuffers (see saveAudioToDB), so
+                                // byteLength is the size — not .size.
+                                out.push({ key: cursor.key, size: cursor.value?.byteLength || 0 });
+                                cursor.continue();
+                            } else resolve(out);
+                        };
+                        cursorReq.onerror = function() {
+                            reject(cursorReq.error || new Error('cursor read failed'));
+                        };
+                    };
+                    req.onerror = function() {
+                        reject(req.error || new Error('could not open TriggerAudioDB'));
+                    };
+                    req.onblocked = function() {
+                        reject(new Error('TriggerAudioDB is blocked (another tab may have it open)'));
+                    };
+                });
+            } catch (err) {
+                console.error('Orphan scan failed:', err);
+                el.textContent = 'Could not check for unused sounds — try again.';
+                return;
+            }
+
+            const { keys, totalBytes } = window.persistence.findOrphanBlobs(triggers, entries);
+            el.textContent = '';                              // clear again, never innerHTML
+            if (!keys.length) { el.textContent = 'No unused sounds.'; return; }
+
+            const mb = (totalBytes / 1048576).toFixed(1);
+            el.appendChild(document.createTextNode(
+                `${keys.length} unused sounds (${mb} MB). `));
+
+            const btn = document.createElement('button');
+            btn.textContent = 'Clean up';
+            btn.addEventListener('click', async () => {
+                btn.disabled = true;
+                let removed = 0;
+                const failedKeys = [];
+                // Keep going after a single deletion fails — one bad key must not
+                // stop the rest, strand the button disabled, or throw an unhandled
+                // rejection. Report success and failure counts honestly.
+                for (const k of keys) {
+                    try {
+                        await removeAudioFromDB(k);
+                        removed++;
+                    } catch (err) {
+                        console.error(`Failed to remove orphaned blob ${k}:`, err);
+                        failedKeys.push(k);
+                    }
+                }
+                btn.disabled = false;                         // always re-enable so the user can retry
+                el.textContent = failedKeys.length
+                    ? `Removed ${removed}, could not remove ${failedKeys.length}.`
+                    : `Removed ${removed} unused sounds.`;
+            });
+            el.appendChild(btn);
+        }
+
         async function deleteAudioFromDBByTrigger(trigger) {
             if (trigger.sounds && trigger.sounds.length > 0) {
                 const request = indexedDB.open('TriggerAudioDB', 1);
@@ -6944,12 +7475,15 @@
         importZipBtn.addEventListener('click', () => {
             importZipInput.click();
         });
-        
-        importZipInput.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
+
+        // Extracted from the file-input change handler so importBackup()
+        // (backup ZIP restore) can drive the same soundpack-loading path a
+        // plain .zip drop uses. No function of this name existed before —
+        // `grep -n "function handleZipFile" index.html` returned nothing;
+        // this was the file input's inline handler body, moved out unchanged.
+        async function handleZipFile(file) {
             updateStatus('Importing ZIP soundpack...');
-            
+
             try {
                 const zip = await JSZip.loadAsync(file);
                 const manifestFile = zip.file('soundpack.json');
@@ -7022,6 +7556,7 @@
                 try {
                     // Store audio files in IndexedDB and create references
                     const triggersWithDBRefs = [];
+                    const storedBlobKeys = [];
                     for (const trigger of triggers) {
                         const triggerWithRefs = { ...trigger, sounds: [] };
                         
@@ -7030,18 +7565,26 @@
                                 if (sound.blob && sound.blob instanceof Blob) {
                                     // Generate a unique key for this sound
                                     const blobKey = `zip_${Date.now()}_${Math.random().toString(36).substr(2, 9)}_${sound.name}`;
-                                    
-                                    // Save blob to IndexedDB
-                                    await saveAudioToDB(blobKey, sound.blob);
-                                    
+
+                                    // Save blob to IndexedDB. One sound's failure must not
+                                    // abort the whole save — only push to storedBlobKeys on
+                                    // success; planSave/chooseRecordToPersist do the rest by
+                                    // comparing this trigger's blobKey against storedBlobKeys.
+                                    try {
+                                        await saveAudioToDB(blobKey, sound.blob);
+                                        await analyseAndStoreGainForBlob(blobKey, sound.blob);
+                                        storedBlobKeys.push(blobKey);
+                                        console.log(`💾 Stored ${sound.name} in IndexedDB with key: ${blobKey}`);
+                                    } catch (blobError) {
+                                        console.warn(`⚠️ Could not store ${sound.name} in IndexedDB:`, blobError);
+                                    }
+
                                     // Store reference instead of blob
                                     triggerWithRefs.sounds.push({
                                         name: sound.name,
                                         blobKey: blobKey,
                                         originalBlob: true // Flag to indicate this came from ZIP
                                     });
-                                    
-                                    console.log(`💾 Stored ${sound.name} in IndexedDB with key: ${blobKey}`);
                                 } else {
                                     // Copy other sound data as-is
                                     triggerWithRefs.sounds.push(sound);
@@ -7052,36 +7595,54 @@
                         triggersWithDBRefs.push(triggerWithRefs);
                     }
                     
-                    // Now save the trigger data with DB references to localStorage
-                    const zipDataForStorage = {
-                        triggers: triggersWithDBRefs,
-                        timestamp: Date.now(),
-                        version: '2.0' // Version to track storage format
-                    };
-                    
-                    localStorage.setItem('lastZipData', JSON.stringify(zipDataForStorage));
+                    // Now save the trigger data with DB references to localStorage.
+                    // planSave/chooseRecordToPersist (persistence.js) make sure a save
+                    // with missing blobs never overwrites a good previous record.
+                    const previousRaw = localStorage.getItem('lastZipData');
+                    // A corrupt stored record protects nothing — treat it as
+                    // absent rather than letting JSON.parse throw here, which
+                    // would skip the setItem below and permanently block every
+                    // future save (the catch's "left untouched" message would
+                    // then be true forever, not just for this attempt).
+                    let previousRecord = null;
+                    if (previousRaw) {
+                        try {
+                            previousRecord = JSON.parse(previousRaw);
+                        } catch (parseError) {
+                            console.warn('⚠️ Previous lastZipData was corrupt, ignoring it:', parseError);
+                            previousRecord = null;
+                        }
+                    }
+                    const { record, failures } = window.persistence.planSave(
+                        triggersWithDBRefs, storedBlobKeys);
+                    const { record: toPersist, warning } =
+                        window.persistence.chooseRecordToPersist(record, previousRecord, failures);
+                    localStorage.setItem('lastZipData', JSON.stringify(toPersist));
+                    if (warning) showPersistenceWarning(warning);
                     console.log(`📦 ZIP data saved: ${triggers.length} triggers with IndexedDB references`);
-                    
+
                 } catch (storageError) {
                     console.warn('⚠️ Could not save ZIP data with IndexedDB:', storageError);
-                    // Final fallback: save basic structure
-                    const fallbackData = {
-                        triggers: triggers.map(t => ({
-                            ...t,
-                            sounds: (t.sounds || []).map(s => ({ name: s.name, type: 'missing_blob' }))
-                        })),
-                        version: '1.0'
-                    };
-                    localStorage.setItem('lastZipData', JSON.stringify(fallbackData));
+                    showPersistenceWarning(
+                        `Could not save your soundpack sounds: ${storageError.message}. ` +
+                        `Your previously saved data has been left untouched.`);
                 }
                 renderTriggerList();
                 updateStatus('✅ ZIP soundpack imported!', 'success');
                 console.log('📋 All triggers loaded:', triggers.length);
                 console.log('🔊 Audio elements loaded:', Object.keys(triggerAudioElements).length);
+                return true;
             } catch (err) {
                 console.error('ZIP import error:', err);
                 updateStatus('❌ Failed to import ZIP: ' + err.message, 'error');
+                return false;
             }
+        }
+
+        importZipInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            await handleZipFile(file);
         });
 
         // Button event listeners
@@ -7425,7 +7986,7 @@
                                         console.warn('Could not set audio output device:', err));
                                 }
                                 
-                                audio.volume = masterVolume;
+                                audio.volume = Math.max(0, Math.min(1, masterVolume * levelledVolumeFor(sound)));
                                 
                                 // Enhanced error handling for audio playback
                                 audio.onerror = (e) => {
@@ -8086,7 +8647,7 @@
                                         console.warn('Could not set audio output device:', err));
                                 }
                                 
-                                audio.volume = masterVolume;
+                                audio.volume = Math.max(0, Math.min(1, masterVolume * levelledVolumeFor(sound)));
                                 await audio.play();
                                 
                                 audio.onended = () => {
@@ -8359,6 +8920,7 @@
                     for (let file of files) {
                         const blobKey = `${word}--${Date.now()}--${file.name}`;
                         await saveAudioToDB(blobKey, file);
+                        await analyseAndStoreGainForBlob(blobKey, file);
                         sounds.push({ name: file.name, blobKey });
                     }
                     
@@ -8839,22 +9401,26 @@
             if (lastZip && lastZipData) {
                 try {
                     const zipInfo = JSON.parse(lastZip);
-                    const daysSince = (Date.now() - zipInfo.timestamp) / (1000 * 60 * 60 * 24);
-                    
-                    if (daysSince < 7 && zipInfo.triggerCount > 0) { // Auto-load if less than 7 days old
-                        console.log(`🎯 Auto-loading last ZIP: ${zipInfo.filename} (${zipInfo.triggerCount} triggers)`);
-                        updateStatus('Auto-loading soundpack...', 'info');
-                        
-                        // Parse the stored ZIP data which contains the full triggers with blobs
-                        const zipData = JSON.parse(lastZipData);
-                        
-                        if (zipData.triggers && zipData.triggers.length > 0) {
+                    const stored = JSON.parse(lastZipData);
+                    const decision = window.persistence.shouldAutoLoad(stored);
+                    if (!decision.load) {
+                        console.log(`ℹ️ Not auto-loading: ${decision.reason}`);
+                        return false;
+                    }
+                    console.log(`🎯 Auto-loading last ZIP: ${zipInfo.filename} (${zipInfo.triggerCount} triggers)`);
+                    updateStatus('Auto-loading soundpack...', 'info');
+
+                    // Parse the stored ZIP data which contains the full triggers with blobs
+                    const zipData = stored;
+
+                    if (zipData.triggers && zipData.triggers.length > 0) {
                             console.log(`📦 Restoring ${zipData.triggers.length} triggers with audio blobs from ZIP data`);
                             triggers = zipData.triggers;
                             
                             // Restore audio elements from the stored blobs
                             triggerAudioElements = {};
                             let audioRestoredCount = 0;
+                            let missingBlobCount = 0;
                             
                             for (const trigger of triggers) {
                                 if (trigger.word && trigger.sounds && trigger.sounds.length > 0) {
@@ -8888,6 +9454,10 @@
                                                     sound.blob = blob; // Update with restored blob
                                                     console.log(`✅ Restored from IndexedDB: ${sound.name}`);
                                                 } else {
+                                                    // Blob is gone (e.g. a previous save recorded this
+                                                    // trigger without ever writing its blob). Degrade
+                                                    // visibly: keep the trigger, count the miss, don't abort.
+                                                    missingBlobCount++;
                                                     console.warn(`⚠️ No data found in IndexedDB for key: ${sound.blobKey}`);
                                                 }
                                             }
@@ -8901,6 +9471,7 @@
                                                 console.log(`🔊 Restored audio URL for: ${sound.name}`);
                                             }
                                         } catch (err) {
+                                            missingBlobCount++;
                                             console.warn(`⚠️ Could not restore audio for ${sound.name}:`, err);
                                         }
                                     }
@@ -8921,23 +9492,19 @@
                             renderTriggerList();
                             updateStatus(`✅ Auto-loaded: ${zipInfo.filename} (${triggers.length} triggers, ${audioRestoredCount} sounds)`, 'success');
                             console.log(`📦 ZIP auto-load complete: ${triggers.length} triggers with ${audioRestoredCount} sounds`);
+                            if (missingBlobCount > 0) {
+                                showPersistenceWarning(
+                                    `${missingBlobCount} sound${missingBlobCount === 1 ? '' : 's'} could not be restored`);
+                            }
                             return true; // Successfully loaded
                         } else {
                             console.warn('⚠️ ZIP data found but no triggers in stored data');
                         }
-                    } else {
-                        console.log(`ℹ️ Last ZIP is too old (${Math.round(daysSince)} days) or has no triggers, skipping auto-load`);
-                        if (daysSince >= 7) {
-                            // Clean up old ZIP references
-                            localStorage.removeItem('lastZipImport');
-                            localStorage.removeItem('lastZipData');
-                        }
-                    }
                 } catch (e) {
-                    console.warn('Could not auto-load last ZIP:', e);
-                    // Clear corrupted data
-                    localStorage.removeItem('lastZipImport');
-                    localStorage.removeItem('lastZipData');
+                    showPersistenceWarning(
+                        `Could not load your saved soundpack: ${e.message}. ` +
+                        `Your saved data has been left untouched — try reloading.`);
+                    return false;
                 }
             } else {
                 console.log('ℹ️ No previous ZIP import found (missing info or data)');
@@ -9033,7 +9600,18 @@
             reader.readAsText(file);
         });
         document.getElementById('resetAllSettingsBtn')?.addEventListener('click', resetAllGlobalSettings);
-        
+
+        // Backup ZIP Export/Import Event Listeners
+        document.getElementById('exportBackupBtn')?.addEventListener('click', exportBackup);
+        document.getElementById('importBackupBtn')?.addEventListener('click',
+            () => document.getElementById('importBackupInput').click());
+        document.getElementById('importBackupInput')?.addEventListener('change', function () {
+            if (this.files[0]) importBackup(this.files[0]);
+            this.value = '';
+        });
+
+        document.getElementById('checkOrphansBtn')?.addEventListener('click', reportOrphans);
+
         // Initialize on page load
         window.addEventListener('DOMContentLoaded', async () => {
             updateStatus('Initializing...');
@@ -9061,7 +9639,12 @@
                 
                 renderTriggerList();
                 updateStatus('Ready - Ctrl+T: Time-shift, Ctrl+R: Record/Capture, Ctrl+1: Play latest, F1-F12/Alt+1-9: Favorites');
-                
+
+                // Not awaited on purpose — backfills levelling gain for any
+                // already-loaded sound that has none yet (see
+                // backfillLevellingGains) without delaying startup.
+                backfillLevellingGains();
+
                 // Show keyboard shortcuts help
                 console.log('🎹 Keyboard Shortcuts:');
                 console.log('   F1-F12: Trigger first 12 favorites');
