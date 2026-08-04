@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { shouldAutoLoad, planSave, chooseRecordToPersist, buildBackupManifest, parseBackupManifest } from '../persistence.js';
+import { shouldAutoLoad, planSave, chooseRecordToPersist, buildBackupManifest, parseBackupManifest, findOrphanBlobs } from '../persistence.js';
 
 test('loads a stored pack regardless of age', () => {
   const tenYearsAgo = Date.now() - 3650 * 24 * 60 * 60 * 1000;
@@ -135,4 +135,24 @@ test('parseBackupManifest handles missing version field without warning', () => 
   const parsed = parseBackupManifest(noVersion);
   assert.equal(parsed.settings.masterVolume, 0.5);
   assert.equal(parsed.warnings.length, 0);
+});
+
+test('finds blobs no trigger references', () => {
+  const triggers = [{ word: 'a', sounds: [{ blobKey: 'k1' }] }];
+  const db = [{ key: 'k1', size: 100 }, { key: 'k2', size: 250 }];
+  const { keys, totalBytes } = findOrphanBlobs(triggers, db);
+  assert.deepEqual(keys, ['k2']);
+  assert.equal(totalBytes, 250);
+});
+
+test('reports nothing when every blob is referenced', () => {
+  const triggers = [{ word: 'a', sounds: [{ blobKey: 'k1' }] }];
+  const { keys, totalBytes } = findOrphanBlobs(triggers, [{ key: 'k1', size: 100 }]);
+  assert.deepEqual(keys, []);
+  assert.equal(totalBytes, 0);
+});
+
+test('treats an empty trigger list as referencing nothing', () => {
+  const { keys } = findOrphanBlobs([], [{ key: 'k1', size: 100 }]);
+  assert.deepEqual(keys, ['k1']);
 });

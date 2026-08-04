@@ -82,6 +82,32 @@ export function buildBackupManifest(state) {
   };
 }
 
+/**
+ * Identify DB blobs no trigger references.
+ *
+ * Reporting only. Callers must NOT delete automatically — a blob that looks
+ * orphaned may belong to a record that failed to load this session, and
+ * auto-deleting is the same instinct that caused the data loss this module
+ * exists to prevent.
+ */
+export function findOrphanBlobs(triggers, dbEntries) {
+  const referenced = new Set();
+  for (const trigger of triggers || []) {
+    for (const sound of trigger.sounds || []) {
+      if (sound.blobKey) referenced.add(sound.blobKey);
+    }
+  }
+  const keys = [];
+  let totalBytes = 0;
+  for (const entry of dbEntries || []) {
+    if (!referenced.has(entry.key)) {
+      keys.push(entry.key);
+      totalBytes += entry.size || 0;
+    }
+  }
+  return { keys, totalBytes };
+}
+
 export function parseBackupManifest(json) {
   const warnings = [];
   let raw;

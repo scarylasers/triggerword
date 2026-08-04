@@ -324,8 +324,16 @@
                 <div style="margin-top: 10px;">
                     <button id="resetAllSettingsBtn" type="button" style="background: #ff5722; color: white;">🔄 Reset All to Defaults</button>
                 </div>
-                
+
                 <div id="globalSettingsImportExportStatus" style="margin-top: 8px; font-size: 0.9em; color: #666;"></div>
+            </div>
+
+            <div class="settings-section" style="margin-top: 20px; border-top: 1px solid #ddd; padding-top: 15px;">
+                <h4>🧹 Storage</h4>
+                <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">Audio blobs that no trigger references anymore. Nothing is deleted until you click Clean up.</p>
+
+                <button id="checkOrphansBtn" type="button" style="background: #2196f3; color: white;">Check for unused sounds</button>
+                <div id="orphanReport" style="margin-top: 8px; font-size: 0.9em; color: #666;"></div>
             </div>
         </div>
     </div>
@@ -7036,6 +7044,50 @@
             });
         }
         
+        // Enumerate every blob in IndexedDB, hand plain {key, size} data to
+        // persistence.js's findOrphanBlobs (pure — does no IO), then render
+        // what came back. Deletion only happens if the user clicks the
+        // "Clean up" button this builds — findOrphanBlobs itself never deletes.
+        async function reportOrphans() {
+            const entries = await new Promise((resolve) => {
+                const req = indexedDB.open('TriggerAudioDB', 1);
+                req.onsuccess = function() {
+                    const db = req.result;
+                    const tx = db.transaction('audio', 'readonly');
+                    const store = tx.objectStore('audio');
+                    const out = [];
+                    store.openCursor().onsuccess = function(e) {
+                        const cursor = e.target.result;
+                        if (cursor) {
+                            // Stored values are ArrayBuffers (see saveAudioToDB), so
+                            // byteLength is the size — not .size.
+                            out.push({ key: cursor.key, size: cursor.value?.byteLength || 0 });
+                            cursor.continue();
+                        } else resolve(out);
+                    };
+                };
+                req.onerror = function() { resolve([]); };
+            });
+
+            const { keys, totalBytes } = window.persistence.findOrphanBlobs(triggers, entries);
+            const el = document.getElementById('orphanReport');
+            el.textContent = '';                              // clear, never innerHTML
+            if (!keys.length) { el.textContent = 'No unused sounds.'; return; }
+
+            const mb = (totalBytes / 1048576).toFixed(1);
+            el.appendChild(document.createTextNode(
+                `${keys.length} unused sounds (${mb} MB). `));
+
+            const btn = document.createElement('button');
+            btn.textContent = 'Clean up';
+            btn.addEventListener('click', async () => {
+                btn.disabled = true;
+                for (const k of keys) await removeAudioFromDB(k);
+                el.textContent = `Removed ${keys.length} unused sounds.`;
+            });
+            el.appendChild(btn);
+        }
+
         async function deleteAudioFromDBByTrigger(trigger) {
             if (trigger.sounds && trigger.sounds.length > 0) {
                 const request = indexedDB.open('TriggerAudioDB', 1);
@@ -9220,6 +9272,8 @@
             if (this.files[0]) importBackup(this.files[0]);
             this.value = '';
         });
+
+        document.getElementById('checkOrphansBtn')?.addEventListener('click', reportOrphans);
 
         // Initialize on page load
         window.addEventListener('DOMContentLoaded', async () => {
