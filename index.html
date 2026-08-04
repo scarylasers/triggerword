@@ -7057,10 +7057,18 @@
                                 if (sound.blob && sound.blob instanceof Blob) {
                                     // Generate a unique key for this sound
                                     const blobKey = `zip_${Date.now()}_${Math.random().toString(36).substr(2, 9)}_${sound.name}`;
-                                    
-                                    // Save blob to IndexedDB
-                                    await saveAudioToDB(blobKey, sound.blob);
-                                    storedBlobKeys.push(blobKey);
+
+                                    // Save blob to IndexedDB. One sound's failure must not
+                                    // abort the whole save — only push to storedBlobKeys on
+                                    // success; planSave/chooseRecordToPersist do the rest by
+                                    // comparing this trigger's blobKey against storedBlobKeys.
+                                    try {
+                                        await saveAudioToDB(blobKey, sound.blob);
+                                        storedBlobKeys.push(blobKey);
+                                        console.log(`💾 Stored ${sound.name} in IndexedDB with key: ${blobKey}`);
+                                    } catch (blobError) {
+                                        console.warn(`⚠️ Could not store ${sound.name} in IndexedDB:`, blobError);
+                                    }
 
                                     // Store reference instead of blob
                                     triggerWithRefs.sounds.push({
@@ -7068,8 +7076,6 @@
                                         blobKey: blobKey,
                                         originalBlob: true // Flag to indicate this came from ZIP
                                     });
-                                    
-                                    console.log(`💾 Stored ${sound.name} in IndexedDB with key: ${blobKey}`);
                                 } else {
                                     // Copy other sound data as-is
                                     triggerWithRefs.sounds.push(sound);
@@ -8934,6 +8940,7 @@
                                                 console.log(`🔊 Restored audio URL for: ${sound.name}`);
                                             }
                                         } catch (err) {
+                                            missingBlobCount++;
                                             console.warn(`⚠️ Could not restore audio for ${sound.name}:`, err);
                                         }
                                     }
