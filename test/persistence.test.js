@@ -65,3 +65,15 @@ test('a partial save is kept when there is no previous record', () => {
   assert.equal(record, partial, 'something is better than nothing');
   assert.match(warning, /b\.wav/);
 });
+
+test('planSave decouples the returned record from mutations to the caller\'s array', () => {
+  const mutableTriggers = [
+    { word: 'yes', sounds: [{ name: 'a.wav', blobKey: 'k1' }] },
+  ];
+  const { record } = planSave(mutableTriggers, ['k1']);
+  assert.equal(record.triggers.length, 1, 'initial snapshot is correct');
+
+  mutableTriggers.push({ word: 'extra', sounds: [] });
+  assert.equal(record.triggers.length, 1, 'record is not mutated by caller changes');
+  assert.equal(mutableTriggers.length, 2, 'caller array was actually mutated');
+});

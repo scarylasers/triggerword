@@ -35,7 +35,7 @@ export function planSave(triggers, storedBlobKeys) {
     }
   }
   return {
-    record: { triggers, timestamp: Date.now(), version: '2.0' },
+    record: { triggers: [...(triggers || [])], timestamp: Date.now(), version: '2.0' },
     failures,
   };
 }
