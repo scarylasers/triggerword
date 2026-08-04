@@ -5,6 +5,11 @@
     <link rel="stylesheet" href="static/style.css">
     <!-- JSZip CDN for ZIP import -->
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <script type="module">
+      import * as persistence from './persistence.js';
+      window.persistence = persistence;
+      window.dispatchEvent(new Event('persistence-ready'));
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TriggerWord</title>
     <link rel="icon" href="/favicon.ico">
@@ -13,6 +18,14 @@
     <link rel="icon" type="image/png" href="static/images/Triggerword_logo_medium.png">
 </head>
 <body>
+    <div id="persistenceWarning" style="display:none;position:sticky;top:0;z-index:9999;
+         background:#3a2a00;color:#ffd479;border-bottom:1px solid #7a5a00;
+         padding:10px 14px;font-size:14px;">
+      <span id="persistenceWarningText"></span>
+      <button id="persistenceWarningDismiss"
+              style="float:right;background:none;border:1px solid #7a5a00;color:#ffd479;
+                     border-radius:4px;cursor:pointer;padding:2px 8px;">dismiss</button>
+    </div>
     <!-- Logo section -->
     <div class="logo-container">
         <img src="static/images/Triggerword_logo_medium.png" alt="TriggerWord Logo" class="app-logo">
@@ -413,6 +426,19 @@
         const startBtn = document.getElementById('startBtn');
         const pauseBtn = document.getElementById('pauseBtn');
         const resumeBtn = document.getElementById('resumeBtn');
+
+        function showPersistenceWarning(message) {
+            const bar = document.getElementById('persistenceWarning');
+            const text = document.getElementById('persistenceWarningText');
+            if (!bar || !text) { console.warn(message); return; }
+            text.textContent = message;          // textContent, never innerHTML
+            bar.style.display = '';
+            console.warn(message);
+        }
+        document.getElementById('persistenceWarningDismiss')
+            ?.addEventListener('click', () => {
+                document.getElementById('persistenceWarning').style.display = 'none';
+            });
 
         // --- Modal logic for editing card details ---
         async function ensureModalLoaded() {
@@ -7022,6 +7048,7 @@
                 try {
                     // Store audio files in IndexedDB and create references
                     const triggersWithDBRefs = [];
+                    const storedBlobKeys = [];
                     for (const trigger of triggers) {
                         const triggerWithRefs = { ...trigger, sounds: [] };
                         
@@ -7033,7 +7060,8 @@
                                     
                                     // Save blob to IndexedDB
                                     await saveAudioToDB(blobKey, sound.blob);
-                                    
+                                    storedBlobKeys.push(blobKey);
+
                                     // Store reference instead of blob
                                     triggerWithRefs.sounds.push({
                                         name: sound.name,
@@ -7052,27 +7080,24 @@
                         triggersWithDBRefs.push(triggerWithRefs);
                     }
                     
-                    // Now save the trigger data with DB references to localStorage
-                    const zipDataForStorage = {
-                        triggers: triggersWithDBRefs,
-                        timestamp: Date.now(),
-                        version: '2.0' // Version to track storage format
-                    };
-                    
-                    localStorage.setItem('lastZipData', JSON.stringify(zipDataForStorage));
+                    // Now save the trigger data with DB references to localStorage.
+                    // planSave/chooseRecordToPersist (persistence.js) make sure a save
+                    // with missing blobs never overwrites a good previous record.
+                    const previousRaw = localStorage.getItem('lastZipData');
+                    const previousRecord = previousRaw ? JSON.parse(previousRaw) : null;
+                    const { record, failures } = window.persistence.planSave(
+                        triggersWithDBRefs, storedBlobKeys);
+                    const { record: toPersist, warning } =
+                        window.persistence.chooseRecordToPersist(record, previousRecord, failures);
+                    localStorage.setItem('lastZipData', JSON.stringify(toPersist));
+                    if (warning) showPersistenceWarning(warning);
                     console.log(`📦 ZIP data saved: ${triggers.length} triggers with IndexedDB references`);
-                    
+
                 } catch (storageError) {
                     console.warn('⚠️ Could not save ZIP data with IndexedDB:', storageError);
-                    // Final fallback: save basic structure
-                    const fallbackData = {
-                        triggers: triggers.map(t => ({
-                            ...t,
-                            sounds: (t.sounds || []).map(s => ({ name: s.name, type: 'missing_blob' }))
-                        })),
-                        version: '1.0'
-                    };
-                    localStorage.setItem('lastZipData', JSON.stringify(fallbackData));
+                    showPersistenceWarning(
+                        `Could not save your soundpack sounds: ${storageError.message}. ` +
+                        `Your previously saved data has been left untouched.`);
                 }
                 renderTriggerList();
                 updateStatus('✅ ZIP soundpack imported!', 'success');
@@ -8839,22 +8864,26 @@
             if (lastZip && lastZipData) {
                 try {
                     const zipInfo = JSON.parse(lastZip);
-                    const daysSince = (Date.now() - zipInfo.timestamp) / (1000 * 60 * 60 * 24);
-                    
-                    if (daysSince < 7 && zipInfo.triggerCount > 0) { // Auto-load if less than 7 days old
-                        console.log(`🎯 Auto-loading last ZIP: ${zipInfo.filename} (${zipInfo.triggerCount} triggers)`);
-                        updateStatus('Auto-loading soundpack...', 'info');
-                        
-                        // Parse the stored ZIP data which contains the full triggers with blobs
-                        const zipData = JSON.parse(lastZipData);
-                        
-                        if (zipData.triggers && zipData.triggers.length > 0) {
+                    const stored = JSON.parse(lastZipData);
+                    const decision = window.persistence.shouldAutoLoad(stored);
+                    if (!decision.load) {
+                        console.log(`ℹ️ Not auto-loading: ${decision.reason}`);
+                        return false;
+                    }
+                    console.log(`🎯 Auto-loading last ZIP: ${zipInfo.filename} (${zipInfo.triggerCount} triggers)`);
+                    updateStatus('Auto-loading soundpack...', 'info');
+
+                    // Parse the stored ZIP data which contains the full triggers with blobs
+                    const zipData = stored;
+
+                    if (zipData.triggers && zipData.triggers.length > 0) {
                             console.log(`📦 Restoring ${zipData.triggers.length} triggers with audio blobs from ZIP data`);
                             triggers = zipData.triggers;
                             
                             // Restore audio elements from the stored blobs
                             triggerAudioElements = {};
                             let audioRestoredCount = 0;
+                            let missingBlobCount = 0;
                             
                             for (const trigger of triggers) {
                                 if (trigger.word && trigger.sounds && trigger.sounds.length > 0) {
@@ -8888,6 +8917,10 @@
                                                     sound.blob = blob; // Update with restored blob
                                                     console.log(`✅ Restored from IndexedDB: ${sound.name}`);
                                                 } else {
+                                                    // Blob is gone (e.g. a previous save recorded this
+                                                    // trigger without ever writing its blob). Degrade
+                                                    // visibly: keep the trigger, count the miss, don't abort.
+                                                    missingBlobCount++;
                                                     console.warn(`⚠️ No data found in IndexedDB for key: ${sound.blobKey}`);
                                                 }
                                             }
@@ -8921,23 +8954,19 @@
                             renderTriggerList();
                             updateStatus(`✅ Auto-loaded: ${zipInfo.filename} (${triggers.length} triggers, ${audioRestoredCount} sounds)`, 'success');
                             console.log(`📦 ZIP auto-load complete: ${triggers.length} triggers with ${audioRestoredCount} sounds`);
+                            if (missingBlobCount > 0) {
+                                showPersistenceWarning(
+                                    `${missingBlobCount} sound${missingBlobCount === 1 ? '' : 's'} could not be restored`);
+                            }
                             return true; // Successfully loaded
                         } else {
                             console.warn('⚠️ ZIP data found but no triggers in stored data');
                         }
-                    } else {
-                        console.log(`ℹ️ Last ZIP is too old (${Math.round(daysSince)} days) or has no triggers, skipping auto-load`);
-                        if (daysSince >= 7) {
-                            // Clean up old ZIP references
-                            localStorage.removeItem('lastZipImport');
-                            localStorage.removeItem('lastZipData');
-                        }
-                    }
                 } catch (e) {
-                    console.warn('Could not auto-load last ZIP:', e);
-                    // Clear corrupted data
-                    localStorage.removeItem('lastZipImport');
-                    localStorage.removeItem('lastZipData');
+                    showPersistenceWarning(
+                        `Could not load your saved soundpack: ${e.message}. ` +
+                        `Your saved data has been left untouched — try reloading.`);
+                    return false;
                 }
             } else {
                 console.log('ℹ️ No previous ZIP import found (missing info or data)');
