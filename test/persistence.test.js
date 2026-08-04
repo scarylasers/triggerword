@@ -115,3 +115,24 @@ test('an unknown future version still parses what it recognises', () => {
   assert.equal(parsed.settings.masterVolume, 0.5);
   assert.match(parsed.warnings[0], /newer/i);
 });
+
+test('buildBackupManifest preserves masterVolume: 0 (not falsy defaults)', () => {
+  const m = buildBackupManifest({ masterVolume: 0 });
+  assert.equal(m.masterVolume, 0);
+});
+
+test('parseBackupManifest applies defaults to truncated manifests', () => {
+  const truncated = JSON.stringify({ version: '1.0', masterVolume: 0.5 });
+  const parsed = parseBackupManifest(truncated);
+  assert.equal(parsed.settings.masterVolume, 0.5);
+  assert(Array.isArray(parsed.settings.favoriteTriggers));
+  assert(typeof parsed.settings.gains === 'object');
+  assert.equal(parsed.warnings.length, 0);
+});
+
+test('parseBackupManifest handles missing version field without warning', () => {
+  const noVersion = JSON.stringify({ masterVolume: 0.5 });
+  const parsed = parseBackupManifest(noVersion);
+  assert.equal(parsed.settings.masterVolume, 0.5);
+  assert.equal(parsed.warnings.length, 0);
+});

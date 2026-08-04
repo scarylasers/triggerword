@@ -95,5 +95,17 @@ export function parseBackupManifest(json) {
       `Backup was made by a newer version (${raw.version}); ` +
       `restoring what this build understands.`);
   }
-  return { settings: raw, warnings };
+  const settings = {
+    version: raw.version ?? BACKUP_MANIFEST_VERSION,
+    exportedAt: raw.exportedAt ?? null,
+    globalSettings: raw.globalSettings ?? {},
+    keyboardShortcuts: raw.keyboardShortcuts ?? {},
+    controlShortcuts: raw.controlShortcuts ?? {},
+    favoriteTriggers: raw.favoriteTriggers ?? [],
+    masterVolume: raw.masterVolume ?? 1,
+    selectedInputDevice: raw.selectedInputDevice ?? null,
+    selectedOutputDevice: raw.selectedOutputDevice ?? null,
+    gains: raw.gains ?? {},
+  };
+  return { settings, warnings };
 }
