@@ -1,0 +1,21 @@
+<!-- Modal for editing soundboard card details -->
+<div id="editModal" class="modal-overlay">
+  <div id="editModalContent" class="modal-content">
+    <button id="editModalClose" class="modal-close-btn">✖</button>
+    <h2 class="modal-title">Edit Soundboard Card</h2>
+    <div class="modal-field">
+      <label>Keywords (comma-separated):<br>
+        <input id="editModalAliases" type="text" class="modal-input-text">
+      </label>
+    </div>
+    <div class="modal-field">
+      <label>Cooldown (seconds):<br>
+        <input id="editModalCooldown" type="number" min="1" class="modal-input-number">
+      </label>
+    </div>
+    <div class="modal-buttons">
+      <button id="editModalSave" class="modal-save-btn">Save</button>
+      <button id="editModalDelete" class="modal-delete-btn">Delete Group</button>
+    </div>
+  </div>
+</div>

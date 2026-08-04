@@ -1,3 +1,89 @@
+/* TriggerWord Global Stylesheet - Unified Version */
+/* Grid layout styles */
+        .soundboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 4fr));
+            gap: 16px;
+            margin-top: 16px;
+            padding: 16px;
+        }
+        
+        .soundboard-card {
+            background: #16ffe0 !important;
+            border: 2px solid #b0e0e6 !important;
+            border-radius: 16px !important;
+            padding: 10px 6px 17px 6px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            position: relative !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+            cursor: pointer !important;
+        }
+        
+        .word-chip {
+            display: inline-block;
+            background: #e3eafc;
+            border-radius: 8px;
+            padding: 2px 8px;
+            margin-right: 4px;
+            margin-bottom: 4px;
+            font-size: 0.97em;
+            cursor: default !important;
+            user-select: none !important;
+            pointer-events: none !important;
+            color: #ff78007a;
+        }
+        
+        .edit-card-btn {
+            position: absolute !important;
+            bottom: -10px !important;
+            right: -5px !important;
+            font-size: 1em !important;
+            cursor: pointer !important;
+            transition: all 0.2s ease !important;
+            z-index: 10 !important;
+            background-color: rgba(0, 0, 0, 0.1);
+            border-top-left-radius: 25px;
+            border-top-right-radius: 0px;
+            border-bottom-right-radius: 12px;
+            border-bottom-left-radius: 0px;
+        }
+        
+        .edit-card-btn:hover {
+            background: #ff8f00 !important;
+            transform: scale(1.1) !important;
+            box-shadow: 0 2px 8px rgba(255, 143, 0, 0.4) !important;
+        }
+
+        /* Favorite button styling */
+        .favorite-btn {
+            position: absolute;
+            top: -18px;
+            left: -5px;
+            background: none;
+            border: none;
+            font-size: 2rem;
+            cursor: pointer;
+            z-index: 15;
+            padding: 0px;
+        }
+
+        /* Modal test button */
+        #editModalTest {
+            background: #4caf50 !important;
+            color: white !important;
+            border: none !important;
+            padding: 8px 16px !important;
+            border-radius: 4px !important;
+            cursor: pointer !important;
+            margin-left: 10px !important;
+        }
+
+        #editModalTest:hover {
+            background: #45a049 !important;
+        }
+
 /* Compact dropdowns */
 .compact-dropdown {
   font-size: 0.95em;
@@ -37,3 +123,955 @@
   border-radius: 4px;
   border: 1px solid #90caf9;
 }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            padding-top: 140px;  /* Space for sticky header */
+            text-align: center;
+            background-color: #f5f5f5;
+        }
+        
+        /* Logo styling */
+        .logo-container {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 10px;
+        }
+        
+        .app-logo {
+            max-height: 60px;
+            max-width: 300px;
+            height: auto;
+            width: auto;
+            object-fit: contain;
+            filter: drop-shadow(0 2px 8px rgba(0,0,0,0.1));
+            display: block;
+            margin: 0 auto;
+            position: fixed;
+            z-index: 0;
+            right: -106px;
+            top: -78px;
+        }
+        
+        /* Responsive logo sizing */
+        @media (max-width: 300px) {
+            .app-logo {
+                max-height: 45px;
+                max-width: 250px;
+            }
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .controls {
+            margin: 20px 0;
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 12px 24px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            margin: 10px 5px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #f9d118;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        #stopBtn {
+            background-color: #f44336;
+        }
+        #stopBtn:hover {
+            background-color: #d32f2f;
+        }
+        #pauseBtn {
+            background-color: #ff9800;
+        }
+        #pauseBtn:hover {
+            background-color: #f57c00;
+        }
+        #resumeBtn {
+            background-color: #2196f3;
+        }
+        #resumeBtn:hover {
+            background-color: #1976d2;
+        }
+        #status {
+            margin: 0;
+            padding: 0;
+            border-radius: 0;
+            min-height: 0;
+            text-align: left;
+            font-size: 0.9em;
+            color: #666;
+        }
+        
+        .action-buttons {
+            position: fixed;
+            left: 10px;
+            top: 50px;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .action-buttons button {
+            padding: 6px 12px;
+            font-size: 0.8em;
+            margin: 0;
+            border-radius: 3px;
+            white-space: nowrap;
+            min-width: 120px;
+        }
+        .recording {
+            background-color: #ffebee;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
+        #transcript {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            min-height: 100px;
+            text-align: left;
+            background-color: white;
+            white-space: pre-wrap;
+            overflow: scroll;
+            display: flex;
+            flex-wrap: wrap;
+            align-content: flex-start;
+        }
+        .trigger {
+            color: #e91e63;
+            font-weight: bold;
+        }
+        .cool-card {
+            background: #fafbfc;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px #0001;
+            padding: 18px 20px 12px 20px;
+            margin-bottom: 20px;
+            border: 1px solid #e0e0e0;
+        }
+        details[open] > summary {
+            border-bottom: 1px solid #e0e0e0;
+        }
+        details > summary {
+            font-size: 1.15em;
+            font-weight: bold;
+            cursor: pointer;
+            outline: none;
+            padding: 8px 0;
+            margin-bottom: 4px;
+        }
+        details[open] > summary {
+            color: #1976d2;
+        }
+        .cooldown-msg {
+            background: #2196f3;
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .triggered-msg {
+            background: orange;
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .sound-chip {
+            display: inline-flex;
+            align-items: center;
+            background: #e3f2fd;
+            border-radius: 16px;
+            padding: 2px 8px 2px 4px;
+            margin: 2px 6px 2px 0;
+            font-size: 0.97em;
+        }
+        .sound-chip button {
+            background: none;
+            border: none;
+            padding: 0 2px;
+            margin: 0 2px;
+            cursor: pointer;
+            font-size: 1em;
+            line-height: 1;
+            color: #1976d2;
+        }
+        .sound-chip button:focus {
+            outline: 1px solid #1976d2;
+        }
+        .add-sound-icon-btn {
+            background: #1976d2;
+            color: #fff;
+            border: none;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1em;
+            margin-left: 4px;
+            cursor: pointer;
+        }
+        .add-sound-icon-btn:focus {
+            outline: 1px solid #1976d2;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .sound-expand-btn {
+          margin-right: 6px;
+          padding: 4px;
+          background-color: blueviolet;
+          border-radius: 7px;
+          font-size: 1.2rem;
+        }
+        .add-sound-btn {
+          font-size: 1.5rem;
+          margin-left: 6px;
+          background-color: #ff8d00;
+          padding: 5px;
+          border-radius: 7px;
+        }
+        .play-btn {
+          font-size: 1.5rem;
+          margin-left: 6px;
+          background-color: #ff0081;
+          padding: 5px;
+          border-radius: 7px;
+        }
+        .remove-btn {
+          font-size: 1.2rem;
+          margin-left: 6px;
+          background-color: #ffffff;
+          padding: 5px;
+          border-radius: 7px;
+        }
+        
+        /* Card logo styling and animations */
+        .card-logo {
+                position: absolute;
+                bottom: -8px;
+                left: -30px;
+                width: 73px;
+                height: 86px;
+                opacity: 1;
+                transition: opacity 0.2s ease, transform 0.3s ease;
+                z-index: 5;
+                transform-origin: center;
+        }
+        
+        .card-logo:hover {
+            opacity: 1;
+        }
+        
+        /* Adjust for different card types */
+        .favorite-card .card-logo {
+            opacity: 0.8;
+        }
+        
+        /* Playing trigger animations */
+        .trigger-playing {
+            background: linear-gradient(45deg, #ff6b35, #ff8c42, #ff6b35) !important;
+            background-size: 250% 250% !important;
+            animation: trigger-playing-gradient 1.5s ease-in-out infinite, 
+                      trigger-playing-glow 2s ease-in-out infinite,
+                      trigger-playing-pulse 1s ease-in-out infinite !important;
+            border: 3px solid #ff4500 !important;
+            transition: all 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
+            z-index: 10 !important;
+        }
+        
+        .trigger-playing.favorite-card {
+            background: linear-gradient(45deg, #ff9800, #ffab40, #ff9800) !important;
+            background-size: 200% 200% !important;
+            border: 3px solid #ff6f00 !important;
+        }
+        
+        /* Smooth fade-out animation class for when playing ends */
+        .trigger-ending {
+            animation: trigger-fade-out 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards !important;
+        }
+        
+        @keyframes trigger-fade-out {
+            0% {
+                transform: scale(1.08);
+                box-shadow: 0 0 25px rgba(255, 107, 53, 1), 
+                           0 0 40px rgba(255, 107, 53, 0.9), 
+                           0 0 55px rgba(255, 107, 53, 0.7);
+                background: linear-gradient(45deg, #ff6b35, #ff8c42, #ff6b35);
+                border-color: #ff4500;
+            }
+            50% {
+                transform: scale(1.04);
+                box-shadow: 0 0 15px rgba(255, 107, 53, 0.6), 
+                           0 0 25px rgba(255, 107, 53, 0.4), 
+                           0 0 35px rgba(255, 107, 53, 0.2);
+            }
+            100% {
+                transform: scale(1);
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                background: #16ffe0;
+                border: 1px solid #ddd;
+            }
+        }
+        
+        /* Favorite card fade-out variant */
+        .trigger-ending.favorite-card {
+            animation: trigger-fade-out-favorite 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards !important;
+        }
+        
+        @keyframes trigger-fade-out-favorite {
+            0% {
+                transform: scale(1.08);
+                box-shadow: 0 0 25px rgba(255, 152, 0, 1), 
+                           0 0 40px rgba(255, 152, 0, 0.9), 
+                           0 0 55px rgba(255, 152, 0, 0.7);
+                background: linear-gradient(45deg, #ff9800, #ffab40, #ff9800);
+                border-color: #ff6f00;
+            }
+            50% {
+                transform: scale(1.04);
+                box-shadow: 0 0 15px rgba(255, 152, 0, 0.6), 
+                           0 0 25px rgba(255, 152, 0, 0.4), 
+                           0 0 35px rgba(255, 152, 0, 0.2);
+            }
+            100% {
+                transform: scale(1);
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                background: #16ffe0;
+                border: 1px solid #ddd;
+            }
+        }
+        
+        /* Spinning logo when playing */
+        .trigger-playing .card-logo {
+            opacity: 1;
+            filter: brightness(1.2) drop-shadow(0 0 5px rgba(255,255,255,0.8));
+            animation: spin-record 2s linear infinite;
+            transform: scale(1.3);
+        }
+        
+        .trigger-ending .card-logo {
+            opacity: 0.7; /* Keep visible, don't fade to transparent */
+            filter: brightness(1) drop-shadow(0 0 2px rgba(255,255,255,0.3));
+            animation: spin-record-ease-out 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+            transform: scale(1.3); /* Start at playing scale */
+        }
+        
+        /* Record spinning animation */
+        @keyframes spin-record {
+            0% { 
+                transform: scale(1.3) rotate(0deg);
+            }
+            100% { 
+                transform: scale(1.3) rotate(360deg);
+            }
+        }
+        
+        /* Eased out spinning animation for ending */
+        @keyframes spin-record-ease-out {
+            0% {
+                transform: scale(1.3) rotate(0deg);
+            }
+            60% {
+                transform: scale(1.15) rotate(216deg); /* 0.6 of a full rotation */
+            }
+            100% {
+                transform: scale(1) rotate(360deg); /* Complete one full rotation while scaling down */
+            }
+        }
+        
+        /* Trigger playing animations */
+        @keyframes trigger-playing-gradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        
+        @keyframes trigger-playing-glow {
+            0% { 
+                box-shadow: 0 0 15px rgba(255, 107, 53, 0.9), 
+                           0 0 25px rgba(255, 107, 53, 0.7), 
+                           0 0 35px rgba(255, 107, 53, 0.5); 
+            }
+            50% { 
+                box-shadow: 0 0 25px rgba(255, 107, 53, 1), 
+                           0 0 40px rgba(255, 107, 53, 0.9), 
+                           0 0 55px rgba(255, 107, 53, 0.7); 
+            }
+            100% { 
+                box-shadow: 0 0 15px rgba(255, 107, 53, 0.9), 
+                           0 0 25px rgba(255, 107, 53, 0.7), 
+                           0 0 35px rgba(255, 107, 53, 0.5); 
+            }
+        }
+        
+        @keyframes trigger-playing-pulse {
+            0% { 
+                transform: scale(1.02);
+            }
+            50% { 
+                transform: scale(1.08);
+            }
+            100% { 
+                transform: scale(1.02);
+            }
+        }
+        
+        /* Ensure playing animation takes priority over other states */
+        .trigger-playing:hover {
+            /* Keep the pulse animation running on hover */
+        }
+        
+        /* Sticky Header Styles */
+        .sticky-header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(181deg, #16ffe0 0%, #00000024 100%);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            z-index: 1000;
+            padding: 2px 6px;
+            font-size: 0.9em;
+        }
+        
+        .sticky-controls-row {
+            display: flex;
+            margin-bottom: 6px;
+            flex-wrap: wrap;
+        }
+        
+        .device-controls {
+            display: flex;
+            gap: 8px;
+            flex: 1;
+        }
+        
+        .compact-select {
+            padding: 4px 6px;
+            font-size: 0.8em;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            background: white;
+            color: #333;
+            max-width: 120px;
+        }
+        
+        .volume-control {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex: 0 0 auto;
+        }
+        
+        .compact-slider {
+            width: 131px;
+            height: 20px;
+        }
+        
+        .volume-text {
+            color: white;
+            font-weight: 600;
+            font-size: 0.85em;
+            min-width: 35px;
+        }
+        
+        .playback-controls {
+            display: flex;
+            gap: 4px;
+            flex: 0 0 auto;
+        }
+        
+        .control-btn {
+            padding: 0px 0px;
+            font-size: 1.1em;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: white;
+            font-weight: 500;
+        }
+        
+        .start-btn {
+            background: #4CAF50;
+        }
+        .start-btn:hover:not(:disabled) {
+            background: #45a049;
+        }
+        
+        .pause-btn {
+            background: #ff9800;
+        }
+        .pause-btn:hover:not(:disabled) {
+            background: #f57c00;
+        }
+        
+        .resume-btn {
+            background: #2196f3;
+        }
+        .resume-btn:hover:not(:disabled) {
+            background: #1976d2;
+        }
+        
+        .stop-btn {
+            background: #f44336;
+        }
+        .stop-btn:hover:not(:disabled) {
+            background: #d32f2f;
+        }
+        
+        .control-btn:disabled {
+            background: #666;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        
+        .sticky-status-row {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 4px;
+        }
+        
+        .compact-status {
+            color: white;
+            font-size: 0.8em;
+            text-align: center;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: rgba(255,255,255,0.1);
+        }
+        
+        .compact-transcript {
+            background: rgba(255,255,255,0.95);
+            border-radius: 6px;
+            padding: 6px 10px;
+            max-height: 60px;
+            overflow-y: auto;
+            font-size: 0.75em;
+            line-height: 1.3;
+            font-family: monospace;
+        }
+        
+        .transcript-line {
+            margin-bottom: 2px;
+            word-wrap: break-word;
+        }
+        
+        .file-controls {
+            display: flex;
+            flex: 0 0 auto;
+            background-color: #6d256b;
+            border-radius: 12px;
+        }
+        
+        .file-btn {
+            background: chocolate;
+            padding: 6px 8px;
+            padding: 0px 0px;
+            font-size: 1.1em;
+        }
+        .file-btn:hover:not(:disabled) {
+            background: #5e35b1;
+        }
+        
+        .sticky-bottom-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 4px;
+        }
+        
+        /* Search Row Styles */
+        .search-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 4px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 6px;
+            padding: 4px;
+            position: relative;
+        }
+        
+        .search-input {
+            flex: 1;
+            padding: 6px 10px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 0.85em;
+            background: white;
+            color: #333;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+        
+        .search-input:focus {
+            border-color: #4CAF50;
+            box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+        }
+        
+        .live-search-toggle {
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 6px 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1.1em;
+            transition: all 0.2s ease;
+        }
+        
+        .live-search-toggle:hover {
+            background: rgba(255,255,255,0.3);
+            border-color: rgba(255,255,255,0.5);
+        }
+        
+        .pause-auto-trigger-btn {
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 6px 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1.1em;
+            transition: all 0.2s ease;
+        }
+        
+        .pause-auto-trigger-btn:hover {
+            background: rgba(255,255,255,0.3);
+            border-color: rgba(255,255,255,0.5);
+        }
+        
+        /* Button active states */
+        .pause-auto-trigger-btn.active {
+            background: #ff9800 !important;
+            color: white !important;
+            border-color: #f57c00 !important;
+        }
+        
+        .live-search-toggle.active {
+            background: #4CAF50 !important;
+            color: white !important;
+            border-color: #45a049 !important;
+        }
+        
+        /* Search suggestions */
+        .search-suggestions {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 60px; /* Leave space for the toggle button */
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1010;
+            display: none;
+            flex-direction: column;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 2px;
+        }
+        
+        .suggestion-btn {
+            background: white;
+            border: none;
+            padding: 8px 12px;
+            text-align: left;
+            cursor: pointer;
+            font-size: 0.85em;
+            color: #333;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background-color 0.2s ease;
+        }
+        
+        .suggestion-btn:hover {
+            background: #f0f8ff;
+            color: #1976d2;
+        }
+        
+        .suggestion-btn:last-child {
+            border-bottom: none;
+        }
+        
+        /* Accumulated suggestion styling */
+        .accumulated-suggestion {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px !important;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%) !important;
+            border-left: 3px solid #28a745 !important;
+        }
+        
+        .accumulated-suggestion:hover {
+            background: linear-gradient(135deg, #e8f5e8 0%, #d4edda 100%) !important;
+            border-left-color: #155724 !important;
+            transform: translateX(2px);
+            transition: all 0.2s ease;
+        }
+        
+        /* Animation for search suggestions */
+        .search-suggestions {
+            opacity: 0;
+            transform: translateY(-5px);
+            transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+        
+        .search-suggestions[style*="flex"] {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        /* Live suggestions and rolling matches grids */
+        .live-suggestions-grid {
+            display: grid !important;
+            grid-template-columns: repeat(3, 1fr) !important;
+            gap: 12px !important;
+            max-width: 100% !important;
+        }
+        
+        .rolling-matches-grid {
+            display: grid !important;
+            grid-template-columns: repeat(5, 1fr) !important;
+            gap: 10px !important;
+            max-width: 100% !important;
+        }
+        
+        .live-suggestion-card,
+        .rolling-match-card {
+            min-width: 0 !important;
+            max-width: 100% !important;
+        }
+        
+        .rolling-match-card {
+            font-size: 0.9em !important;
+        }
+        
+        /* Responsive layout for smaller screens */
+        @media (max-width: 768px) {
+            .live-suggestions-grid {
+                grid-template-columns: repeat(2, 1fr) !important;
+            }
+            .rolling-matches-grid {
+                grid-template-columns: repeat(4, 1fr) !important;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .live-suggestions-grid {
+                grid-template-columns: 1fr !important;
+            }
+            .rolling-matches-grid {
+                grid-template-columns: repeat(2, 1fr) !important;
+            }
+        }
+        
+        /* Auto-trigger visual indication */
+        .would-auto-trigger {
+            animation: auto-trigger-pulse 2s ease-in-out infinite !important;
+            position: relative !important;
+        }
+        
+        .would-auto-trigger::before {
+            content: "🔥";
+            position: absolute;
+            top: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 1.2em;
+            animation: fire-flicker 1.5s ease-in-out infinite;
+            z-index: 20;
+        }
+        
+        @keyframes auto-trigger-pulse {
+            0% { box-shadow: 0 0 0 0 rgba(255, 87, 34, 0.7); }
+            50% { box-shadow: 0 0 0 8px rgba(255, 87, 34, 0.3); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 87, 34, 0); }
+        }
+        
+        @keyframes fire-flicker {
+            0%, 100% { opacity: 1; transform: translateX(-50%) scale(1); }
+            25% { opacity: 0.8; transform: translateX(-50%) scale(1.1); }
+            50% { opacity: 0.9; transform: translateX(-50%) scale(0.95); }
+            75% { opacity: 1; transform: translateX(-50%) scale(1.05); }
+        }
+        
+        /* Hide original controls when sticky header is present */
+        .controls, #status {
+            display: none;
+        }
+        
+        /* Responsive adjustments for search */
+        @media (max-width: 600px) {
+            .search-input {
+                font-size: 0.8em;
+                padding: 5px 8px;
+            }
+            
+            .live-search-toggle {
+                font-size: 1em;
+                padding: 5px 6px;
+            }
+            
+            .suggestion-btn {
+                padding: 6px 10px;
+                font-size: 0.8em;
+            }
+        }
+        
+        /* Favorite card styling */
+        .favorite-card {
+            background: #16ffe0 !important;
+        }
+        
+        /* Modal Styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.4);
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-content {
+            background: #fff;
+            border-radius: 16px;
+            min-width: 320px;
+            max-width: 96vw;
+            padding: 24px 20px 16px 20px;
+            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.25);
+            position: relative;
+        }
+        
+        .modal-close-btn {
+            position: absolute;
+            top: 8px;
+            right: 12px;
+            font-size: 1.3em;
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #666;
+            padding: 4px;
+            border-radius: 4px;
+        }
+        
+        .modal-close-btn:hover {
+            background: #f0f0f0;
+            color: #333;
+        }
+        
+        .modal-title {
+            margin-top: 0;
+            font-size: 1.3em;
+            color: #333;
+        }
+        
+        .modal-field {
+            margin-bottom: 12px;
+        }
+        
+        .modal-field label {
+            display: block;
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 4px;
+        }
+        
+        .modal-input-text {
+            width: 100%;
+            font-size: 1.1em;
+            padding: 4px 8px;
+            margin-top: 4px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        
+        .modal-input-number {
+            width: 80px;
+            font-size: 1.1em;
+            padding: 4px 8px;
+            margin-top: 4px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        
+        .modal-buttons {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 16px;
+        }
+        
+        .modal-save-btn {
+            background: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 20px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+        
+        .modal-save-btn:hover {
+            background: #45a049;
+        }
+        
+        .modal-delete-btn {
+            background: #c62828;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 16px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+        
+        .modal-delete-btn:hover {
+            background: #b71c1c;
+        }

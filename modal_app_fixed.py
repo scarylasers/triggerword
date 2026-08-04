@@ -170,24 +170,37 @@ def fastapi_app():
 
                     print(f"✅ Audio ready for transcription: {wav_path}")
 
-                    # Transcribe the audio
+                    # Transcribe the audio - FORCE ENGLISH ONLY
                     try:
-                        result = model.transcribe(wav_path)
+                        result = model.transcribe(wav_path, language='en')
                         transcription_found = False
                         
+                        def filter_english_only(text):
+                            """Filter out non-English characters and keep only basic English"""
+                            import re
+                            # Keep only basic English letters, numbers, spaces, and common punctuation
+                            filtered = re.sub(r'[^a-zA-Z0-9\s.,!?\'\-]', '', text)
+                            return filtered.strip()
+                        
                         for segment in result["segments"]:
-                            text = segment["text"].strip().lower()
-                            if text:  # Only process non-empty transcriptions
-                                transcription_found = True
-                                print(f"🧠 Transcribed: '{text}'")
+                            raw_text = segment["text"].strip()
+                            if raw_text:  # Only process non-empty transcriptions
+                                # Filter to English-only characters
+                                text = filter_english_only(raw_text).lower()
+                                if text:  # Only process if we still have text after filtering
+                                    transcription_found = True
+                                    print(f"🧠 Raw transcribed: '{raw_text}'")
+                                    print(f"🧠 Filtered transcribed: '{text}'")
 
-                                # Check for trigger words
-                                if "let's go" in text:
-                                    await websocket.send_text("trigger:letsgo")
-                                elif "cute" in text:
-                                    await websocket.send_text("trigger:cute")
+                                    # Check for trigger words
+                                    if "let's go" in text:
+                                        await websocket.send_text("trigger:letsgo")
+                                    elif "cute" in text:
+                                        await websocket.send_text("trigger:cute")
+                                    else:
+                                        await websocket.send_text(text)
                                 else:
-                                    await websocket.send_text(text)
+                                    print(f"🚫 Filtered out non-English text: '{raw_text}'")
                         
                         if not transcription_found:
                             print("🔇 No speech detected in audio chunk")

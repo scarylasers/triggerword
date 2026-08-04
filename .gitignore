@@ -1,0 +1,21 @@
+# Audio assets — large binaries, not source. These stay on disk; git just
+# does not track them. Importing soundpacks in the app is unaffected.
+sounds/
+soundpack/
+soundpack_export/
+SOUNDPACKS/
+*.zip
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# Editor / OS
+.idea/
+Thumbs.db
+.DS_Store
+
+# Node (added for the node:test suite; no dependencies are installed)
+node_modules/

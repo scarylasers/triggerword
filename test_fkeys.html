@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>F-Key Test - TriggerWord</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .key-display {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2196f3;
+            text-align: center;
+            padding: 20px;
+            background: #e3f2fd;
+            border-radius: 8px;
+            margin: 20px 0;
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 8px 12px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 13px;
+            border-left: 4px solid #007bff;
+        }
+        .log-entry.unidentified { 
+            background: #fff3cd; 
+            border-left-color: #ffc107;
+            font-weight: bold;
+        }
+        .log-entry.fkey { 
+            background: #d4edda; 
+            border-left-color: #28a745; 
+        }
+        .instruction {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎹 F-Key Test for TriggerWord</h1>
+        
+        <div class="instruction">
+            <strong>🧪 Test Instructions:</strong><br>
+            1. Make sure the router (triggerword_router_min.py) is running as Administrator<br>
+            2. Click in the area below to focus<br>
+            3. Press F13-F22 keys on your remote/keyboard<br>
+            4. Check what the browser actually receives
+        </div>
+
+        <div class="key-display" id="keyDisplay" tabindex="0">
+            Press F13-F22 keys...
+        </div>
+
+        <div>
+            <h3>📊 Key Events Log:</h3>
+            <div id="eventLog"></div>
+        </div>
+
+        <div style="margin-top: 20px;">
+            <button onclick="clearLog()" style="background: #dc3545; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">Clear Log</button>
+        </div>
+    </div>
+
+    <script>
+        const keyDisplay = document.getElementById('keyDisplay');
+        const eventLog = document.getElementById('eventLog');
+        let logCount = 0;
+
+        function addLogEntry(message, type = 'info') {
+            logCount++;
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            const timestamp = new Date().toLocaleTimeString();
+            entry.textContent = `${logCount}. [${timestamp}] ${message}`;
+            eventLog.insertBefore(entry, eventLog.firstChild);
+            
+            // Keep only the last 30 entries
+            if (eventLog.children.length > 30) {
+                eventLog.removeChild(eventLog.lastChild);
+            }
+        }
+
+        // Process keys exactly like TriggerWord modal does
+        function processKey(e) {
+            const key = e.key;
+            const code = e.code;
+            
+            let baseKey = '';
+            let baseDisplayKey = '';
+            let detectionMethod = '';
+            
+            // Same logic as TriggerWord modal
+            if (code && /^F\d{1,2}$/.test(code)) {
+                baseKey = code.toLowerCase();
+                baseDisplayKey = code;
+                detectionMethod = 'Function key via CODE';
+            }
+            else if (key.startsWith('F') && key.length >= 2 && /^F\d{1,2}$/.test(key)) {
+                baseKey = key.toLowerCase();
+                baseDisplayKey = key;
+                detectionMethod = 'Function key via KEY';
+            }
+            else if (key === 'Unidentified' && code) {
+                if (/^F(1[3-9]|2[0-4])$/.test(code)) {
+                    baseKey = code.toLowerCase();
+                    baseDisplayKey = code;
+                    detectionMethod = 'F13-F24 via CODE (Unidentified key)';
+                } else {
+                    baseKey = code.toLowerCase();
+                    baseDisplayKey = code;
+                    detectionMethod = 'Other unidentified key via CODE';
+                }
+            }
+            else if (key.length === 1) {
+                baseKey = key.toLowerCase();
+                baseDisplayKey = key;
+                detectionMethod = 'Single character';
+            }
+            else if (code) {
+                baseKey = code.toLowerCase().replace(/^(key|digit|bracket|quote|comma|period|slash|backslash|minus|equal)/, '');
+                baseDisplayKey = key || code;
+                detectionMethod = 'CODE fallback';
+            }
+            else {
+                baseKey = (key || 'unknown').toLowerCase().replace(/[^a-z0-9]/g, '_');
+                baseDisplayKey = key || code || 'Unknown';
+                detectionMethod = 'Final fallback';
+            }
+            
+            return { baseKey, baseDisplayKey, detectionMethod };
+        }
+
+        function getKeyDisplayName(keyId) {
+            if (keyId.startsWith('f') && keyId.length >= 2) {
+                const fNum = keyId.substring(1);
+                if (/^\d+$/.test(fNum)) {
+                    return `F${fNum}`;
+                }
+                return keyId.toUpperCase();
+            }
+            return keyId.toUpperCase();
+        }
+
+        // Focus the key display area
+        keyDisplay.focus();
+
+        keyDisplay.addEventListener('keydown', (e) => {
+            e.preventDefault();
+            
+            // Process the key
+            const result = processKey(e);
+            const finalDisplayName = getKeyDisplayName(result.baseKey);
+            
+            // Update display
+            keyDisplay.textContent = `Detected: ${finalDisplayName}`;
+            
+            // Determine log type and message
+            let logType = 'info';
+            let logMessage = '';
+            
+            if (e.key === 'Unidentified') {
+                logType = 'unidentified';
+                logMessage = `UNIDENTIFIED: key="${e.key}" code="${e.code}" → processed as "${finalDisplayName}" (${result.detectionMethod})`;
+            } else if (result.detectionMethod.includes('Function key')) {
+                logType = 'fkey';
+                logMessage = `F-KEY: key="${e.key}" code="${e.code}" → "${finalDisplayName}" (${result.detectionMethod})`;
+            } else {
+                logMessage = `OTHER: key="${e.key}" code="${e.code}" → "${finalDisplayName}" (${result.detectionMethod})`;
+            }
+            
+            // Log the event
+            addLogEntry(logMessage, logType);
+            
+            // Update the display with more info
+            setTimeout(() => {
+                keyDisplay.innerHTML = `
+                    <div>Detected: <strong>${finalDisplayName}</strong></div>
+                    <div style="font-size: 14px; margin-top: 8px; opacity: 0.8;">
+                        Raw: key="${e.key}" code="${e.code}"<br>
+                        Method: ${result.detectionMethod}
+                    </div>
+                `;
+            }, 100);
+        });
+
+        function clearLog() {
+            eventLog.innerHTML = '';
+            logCount = 0;
+        }
+
+        // Auto-focus on page load
+        window.addEventListener('load', () => {
+            keyDisplay.focus();
+            addLogEntry('F-Key test loaded. Press F13-F22 to test router forwarding.', 'info');
+        });
+
+        // Keep focus on the key display
+        keyDisplay.addEventListener('blur', () => {
+            setTimeout(() => keyDisplay.focus(), 100);
+        });
+
+        // Also listen for keyup to see if we get both events
+        keyDisplay.addEventListener('keyup', (e) => {
+            if (e.key === 'Unidentified' || e.key.startsWith('F')) {
+                addLogEntry(`KEYUP: key="${e.key}" code="${e.code}"`, 'info');
+            }
+        });
+    </script>
+</body>
+</html>

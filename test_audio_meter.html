@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Meter Test</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            padding: 20px; 
+            background: #f0f0f0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .audio-meter {
+            display: flex;
+            background: #ffffff;
+            border-radius: 8px;
+            border: 2px solid #4CAF50;
+            padding: 15px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            align-items: center;
+            gap: 15px;
+        }
+        .meter-label {
+            font-weight: 600;
+            min-width: 100px;
+            color: #333;
+        }
+        .meter-bar {
+            flex: 1;
+            height: 25px;
+            background: #e0e0e0;
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+            border: 1px solid #ccc;
+        }
+        .meter-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #4caf50 0%, #8bc34a 30%, #ffeb3b 60%, #ff9800 80%, #f44336 100%);
+            transition: width 0.1s ease-out;
+        }
+        .meter-text {
+            min-width: 60px;
+            font-family: monospace;
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #333;
+            text-align: right;
+        }
+        .controls {
+            text-align: center;
+            margin: 20px 0;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 0 10px;
+        }
+        button:hover { background: #45a049; }
+        button:disabled { 
+            background: #ccc; 
+            cursor: not-allowed; 
+        }
+        .stop-btn { background: #f44336; }
+        .stop-btn:hover { background: #da190b; }
+        .status {
+            background: #e3f2fd;
+            border: 1px solid #2196f3;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 20px 0;
+            text-align: center;
+            font-weight: 500;
+        }
+        .debug {
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 20px 0;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 TriggerWord Audio Meter Test</h1>
+        <p>This will help diagnose why you're not seeing visual feedback for audio input.</p>
+        
+        <div class="controls">
+            <button id="startBtn" onclick="startAudioMeter()">🎵 Start Audio Meter</button>
+            <button id="stopBtn" class="stop-btn" onclick="stopAudioMeter()" disabled>🛑 Stop Audio Meter</button>
+        </div>
+        
+        <div class="audio-meter">
+            <div class="meter-label">Audio Level:</div>
+            <div class="meter-bar">
+                <div id="meterFill" class="meter-fill"></div>
+            </div>
+            <div id="meterText" class="meter-text">0%</div>
+        </div>
+        
+        <div id="status" class="status">
+            Click "Start Audio Meter" to test microphone input visualization
+        </div>
+        
+        <div id="debug" class="debug">
+            Debug info will appear here...
+        </div>
+    </div>
+
+    <script>
+        let audioContext = null;
+        let stream = null;
+        let analyser = null;
+        let dataArray = null;
+        let animationFrame = null;
+        let isRunning = false;
+
+        const meterFill = document.getElementById('meterFill');
+        const meterText = document.getElementById('meterText');
+        const status = document.getElementById('status');
+        const debug = document.getElementById('debug');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+
+        function logDebug(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            debug.innerHTML += `[${timestamp}] ${message}<br>`;
+            debug.scrollTop = debug.scrollHeight;
+            console.log(message);
+        }
+
+        async function startAudioMeter() {
+            try {
+                logDebug('🔄 Starting audio meter test...');
+                status.textContent = 'Requesting microphone access...';
+                status.style.background = '#fff3e0';
+                status.style.borderColor = '#ff9800';
+
+                // Request microphone access
+                stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false
+                    }
+                });
+
+                logDebug('✅ Microphone access granted');
+
+                // Get actual device info
+                const tracks = stream.getAudioTracks();
+                if (tracks.length > 0) {
+                    const track = tracks[0];
+                    const settings = track.getSettings();
+                    logDebug(`🎤 Using device: ${track.label || 'Unknown device'}`);
+                    logDebug(`📊 Sample rate: ${settings.sampleRate || 'Unknown'} Hz`);
+                    logDebug(`🔊 Channel count: ${settings.channelCount || 'Unknown'}`);
+                }
+
+                // Set up audio analysis
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                
+                // Configure analyser
+                analyser.fftSize = 256;
+                analyser.smoothingTimeConstant = 0.8;
+                
+                const bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+                
+                // Connect audio graph
+                source.connect(analyser);
+                
+                logDebug(`🎯 Analysis setup - FFT size: ${analyser.fftSize}, Buffer length: ${bufferLength}`);
+
+                // Start the meter update loop
+                isRunning = true;
+                updateMeter();
+
+                // Update UI
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                status.textContent = 'Audio meter active - speak or make noise to see levels!';
+                status.style.background = '#e8f5e9';
+                status.style.borderColor = '#4caf50';
+
+                logDebug('🎵 Audio meter started successfully');
+
+            } catch (error) {
+                logDebug('❌ Error starting audio meter: ' + error.message);
+                status.textContent = 'Error: ' + error.message;
+                status.style.background = '#ffebee';
+                status.style.borderColor = '#f44336';
+                
+                if (error.name === 'NotAllowedError') {
+                    status.textContent = 'Microphone access denied. Please allow microphone access and try again.';
+                } else if (error.name === 'NotFoundError') {
+                    status.textContent = 'No microphone found. Please connect a microphone and try again.';
+                }
+            }
+        }
+
+        function updateMeter() {
+            if (!isRunning || !analyser || !dataArray) {
+                return;
+            }
+
+            animationFrame = requestAnimationFrame(updateMeter);
+
+            // Get frequency data
+            analyser.getByteFrequencyData(dataArray);
+
+            // Calculate average volume
+            let sum = 0;
+            let max = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
+                max = Math.max(max, dataArray[i]);
+            }
+            const average = sum / dataArray.length;
+
+            // Scale to percentage (0-100%)
+            const scaledLevel = (average / 255) * 100;
+            const maxLevel = (max / 255) * 100;
+
+            // Update visual meter
+            meterFill.style.width = `${scaledLevel}%`;
+            meterText.textContent = `${Math.round(scaledLevel)}%`;
+
+            // Log activity occasionally
+            if (Math.random() < 0.01) { // 1% chance per frame
+                logDebug(`📊 Levels - Avg: ${Math.round(scaledLevel)}%, Max: ${Math.round(maxLevel)}%, Raw avg: ${average.toFixed(1)}`);
+            }
+
+            // Update debug display if level is above 5%
+            if (scaledLevel > 5) {
+                status.textContent = `🎤 Audio detected! Level: ${Math.round(scaledLevel)}% (Peak: ${Math.round(maxLevel)}%)`;
+                status.style.background = '#e8f5e9';
+                status.style.borderColor = '#4caf50';
+            } else if (isRunning) {
+                status.textContent = 'Audio meter active - speak or make noise to see levels!';
+                status.style.background = '#f3e5f5';
+                status.style.borderColor = '#9c27b0';
+            }
+        }
+
+        function stopAudioMeter() {
+            try {
+                logDebug('🛑 Stopping audio meter...');
+
+                isRunning = false;
+
+                if (animationFrame) {
+                    cancelAnimationFrame(animationFrame);
+                    animationFrame = null;
+                }
+
+                if (stream) {
+                    stream.getTracks().forEach(track => {
+                        track.stop();
+                        logDebug(`🔇 Stopped track: ${track.label || 'Unknown'}`);
+                    });
+                    stream = null;
+                }
+
+                if (audioContext) {
+                    audioContext.close();
+                    audioContext = null;
+                }
+
+                analyser = null;
+                dataArray = null;
+
+                // Reset meter display
+                meterFill.style.width = '0%';
+                meterText.textContent = '0%';
+
+                // Update UI
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                status.textContent = 'Audio meter stopped';
+                status.style.background = '#e3f2fd';
+                status.style.borderColor = '#2196f3';
+
+                logDebug('✅ Audio meter stopped successfully');
+
+            } catch (error) {
+                logDebug('❌ Error stopping audio meter: ' + error.message);
+            }
+        }
+
+        // Clean up on page unload
+        window.addEventListener('beforeunload', function() {
+            if (isRunning) {
+                stopAudioMeter();
+            }
+        });
+    </script>
+</body>
+</html>

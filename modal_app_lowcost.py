@@ -69,12 +69,18 @@ def fastapi_app():
             # Use faster settings for cost efficiency
             result = model.transcribe(audio_path, fp16=True, language="en")
             
-            # Extract text from all segments
+            # Extract text from all segments and filter English-only
+            import re
             full_text = ""
             for segment in result["segments"]:
-                text = segment["text"].strip()
-                if text:
-                    full_text += text + " "
+                raw_text = segment["text"].strip()
+                if raw_text:
+                    # Filter out non-English characters
+                    filtered_text = re.sub(r'[^a-zA-Z0-9\s.,!?\'\-]', '', raw_text).strip()
+                    if filtered_text:
+                        full_text += filtered_text + " "
+                    else:
+                        print(f"🚫 Filtered out non-English segment: '{raw_text}'")
             
             return full_text.strip() if full_text.strip() else None
         except Exception as e:

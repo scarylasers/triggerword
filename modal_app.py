@@ -138,14 +138,24 @@ def fastapi_app():
                         print(f"💾 Saved final WAV chunk to: {wav_path}")
                         try:
                             result = model.transcribe(wav_path, language='en')
-                            transcript = result["text"].strip()
-                            print(f"📝 Final Transcript: {transcript}")
-                            await websocket.send_text(transcript)
-                            # Check for triggers in transcript
-                            if session_triggers:
-                                for trig in session_triggers:
-                                    if trig in transcript.lower():
-                                        await websocket.send_text(f"trigger:{trig}")
+                            raw_transcript = result["text"].strip()
+                            
+                            # Filter out non-English characters
+                            import re
+                            transcript = re.sub(r'[^a-zA-Z0-9\s.,!?\'\-]', '', raw_transcript).strip()
+                            
+                            print(f"📝 Raw Final Transcript: {raw_transcript}")
+                            print(f"📝 Filtered Final Transcript: {transcript}")
+                            
+                            if transcript:  # Only send if we have text after filtering
+                                await websocket.send_text(transcript)
+                                # Check for triggers in transcript
+                                if session_triggers:
+                                    for trig in session_triggers:
+                                        if trig in transcript.lower():
+                                            await websocket.send_text(f"trigger:{trig}")
+                            else:
+                                print(f"🚫 Filtered out non-English final transcript: '{raw_transcript}'")
                         except Exception as e:
                             print(f"❌ Whisper error: {e}")
                     break
@@ -163,14 +173,24 @@ def fastapi_app():
                     print(f"💾 Saved WAV chunk to: {wav_path}")
                     try:
                         result = model.transcribe(wav_path, language='en')
-                        transcript = result["text"].strip()
-                        print(f"📝 Transcript: {transcript}")
-                        await websocket.send_text(transcript)
-                        # Check for triggers in transcript
-                        if session_triggers:
-                            for trig in session_triggers:
-                                if trig in transcript.lower():
-                                    await websocket.send_text(f"trigger:{trig}")
+                        raw_transcript = result["text"].strip()
+                        
+                        # Filter out non-English characters
+                        import re
+                        transcript = re.sub(r'[^a-zA-Z0-9\s.,!?\'\-]', '', raw_transcript).strip()
+                        
+                        print(f"📝 Raw Transcript: {raw_transcript}")
+                        print(f"📝 Filtered Transcript: {transcript}")
+                        
+                        if transcript:  # Only send if we have text after filtering
+                            await websocket.send_text(transcript)
+                            # Check for triggers in transcript
+                            if session_triggers:
+                                for trig in session_triggers:
+                                    if trig in transcript.lower():
+                                        await websocket.send_text(f"trigger:{trig}")
+                        else:
+                            print(f"🚫 Filtered out non-English transcript: '{raw_transcript}'")
                     except Exception as e:
                         print(f"❌ Whisper error: {e}")
                     pcm_buffer = bytearray()
