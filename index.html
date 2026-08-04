@@ -2398,17 +2398,39 @@
                 updateStatus('Building backup…');
                 const zip = new JSZip();
                 const soundpack = { triggers: [] };
-                const seen = new Set();
+                // Sounds are identified by blobKey, not by name — two distinct
+                // blobKeys can legitimately share a filename. blobKeyToZipName
+                // remembers the in-zip name already claimed for a blobKey (so
+                // it's written once and every trigger referencing it points at
+                // the same file); usedZipNames tracks claimed filenames so a
+                // same-named-but-different blobKey gets a disambiguated one
+                // instead of silently overwriting the first sound's bytes.
+                const blobKeyToZipName = new Map();
+                const usedZipNames = new Set();
 
                 for (const trigger of triggers) {
                     const entry = { word: trigger.word, sounds: [] };
                     for (const sound of (trigger.sounds || [])) {
-                        entry.sounds.push({ name: sound.name });
-                        if (sound.blobKey && !seen.has(sound.name)) {
-                            seen.add(sound.name);
-                            const blob = await getAudioFromDB(sound.blobKey);
-                            if (blob) zip.file(sound.name, blob);
+                        let zipName = sound.name;
+                        if (sound.blobKey) {
+                            if (blobKeyToZipName.has(sound.blobKey)) {
+                                zipName = blobKeyToZipName.get(sound.blobKey);
+                            } else {
+                                if (usedZipNames.has(zipName)) {
+                                    const dot = zipName.lastIndexOf('.');
+                                    const stem = dot === -1 ? zipName : zipName.slice(0, dot);
+                                    const ext = dot === -1 ? '' : zipName.slice(dot);
+                                    let n = 2;
+                                    while (usedZipNames.has(`${stem}_${n}${ext}`)) n++;
+                                    zipName = `${stem}_${n}${ext}`;
+                                }
+                                usedZipNames.add(zipName);
+                                blobKeyToZipName.set(sound.blobKey, zipName);
+                                const blob = await getAudioFromDB(sound.blobKey);
+                                if (blob) zip.file(zipName, blob);
+                            }
                         }
+                        entry.sounds.push({ name: zipName });
                     }
                     soundpack.triggers.push(entry);
                 }
@@ -2462,10 +2484,30 @@
                         localStorage.setItem('favoriteTriggers', JSON.stringify(settings.favoriteTriggers));
                     if (settings.masterVolume != null)
                         localStorage.setItem('masterVolume', String(settings.masterVolume));
+                    if (settings.selectedInputDevice != null)
+                        localStorage.setItem('selectedInputDevice', settings.selectedInputDevice);
+                    if (settings.selectedOutputDevice != null)
+                        localStorage.setItem('selectedOutputDevice', settings.selectedOutputDevice);
                     if (settings.gains)
                         localStorage.setItem('soundGains', JSON.stringify(settings.gains));
+
+                    // handleZipFile() -> saveTriggersToStorage() -> saveFavoritesToStorage()
+                    // writes favoriteTriggers/keyboardShortcuts back to localStorage FROM
+                    // the in-memory variables. Without this, the restored values just
+                    // written above get overwritten by whatever was in memory before the
+                    // restore (e.g. empty, after a cleared-storage reload) — same call,
+                    // before any reload. Re-run the existing load path now that
+                    // localStorage holds the restored values, so the in-memory state
+                    // matches and that later write is a no-op instead of data loss.
+                    loadFavoritesFromStorage();
                 }
-                await handleZipFile(file);            // sounds + triggers via the existing path
+                const soundpackRestored = await handleZipFile(file); // sounds + triggers via the existing path
+                if (soundpackRestored === false) {
+                    showPersistenceWarning(
+                        'Backup restore failed while loading sounds — settings were restored, ' +
+                        'but sounds and triggers were not. See status above for the error.');
+                    return;
+                }
                 updateStatus('✅ Backup restored', 'success');
             } catch (e) {
                 showPersistenceWarning(`Restore failed: ${e.message}. Nothing was changed.`);
@@ -7201,9 +7243,11 @@
                 updateStatus('✅ ZIP soundpack imported!', 'success');
                 console.log('📋 All triggers loaded:', triggers.length);
                 console.log('🔊 Audio elements loaded:', Object.keys(triggerAudioElements).length);
+                return true;
             } catch (err) {
                 console.error('ZIP import error:', err);
                 updateStatus('❌ Failed to import ZIP: ' + err.message, 'error');
+                return false;
             }
         }
 
