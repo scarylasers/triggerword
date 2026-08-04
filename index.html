@@ -316,6 +316,9 @@
                     <button id="exportGlobalSettingsBtn" type="button" style="background: #4caf50; color: white;">📤 Export All Settings</button>
                     <button id="importGlobalSettingsBtn" type="button" style="background: #2196f3; color: white;">📥 Import Settings</button>
                     <input type="file" id="importGlobalSettingsInput" style="display:none" accept=".json">
+                    <button id="exportBackupBtn" type="button" style="background: #4caf50; color: white;">Export backup (everything)</button>
+                    <input type="file" id="importBackupInput" accept=".zip" style="display:none">
+                    <button id="importBackupBtn" type="button" style="background: #2196f3; color: white;">Import backup</button>
                 </div>
                 
                 <div style="margin-top: 10px;">
@@ -2383,6 +2386,92 @@
             });
         }
         
+        // Stub for Task 8's real gain-levelling pair (load/saveGains). Until
+        // then this just exposes whatever's in localStorage so exportBackup()
+        // can work standalone.
+        function loadGains() { return JSON.parse(localStorage.getItem('soundGains') || '{}'); }
+
+        // One-file backup: everything a soundpack export has, plus settings,
+        // shortcuts, favourites and volume — see persistence.js buildBackupManifest.
+        async function exportBackup() {
+            try {
+                updateStatus('Building backup…');
+                const zip = new JSZip();
+                const soundpack = { triggers: [] };
+                const seen = new Set();
+
+                for (const trigger of triggers) {
+                    const entry = { word: trigger.word, sounds: [] };
+                    for (const sound of (trigger.sounds || [])) {
+                        entry.sounds.push({ name: sound.name });
+                        if (sound.blobKey && !seen.has(sound.name)) {
+                            seen.add(sound.name);
+                            const blob = await getAudioFromDB(sound.blobKey);
+                            if (blob) zip.file(sound.name, blob);
+                        }
+                    }
+                    soundpack.triggers.push(entry);
+                }
+
+                zip.file('soundpack.json', JSON.stringify(soundpack, null, 2));
+                zip.file('triggerword-backup.json', JSON.stringify(
+                    window.persistence.buildBackupManifest({
+                        globalSettings, keyboardShortcuts, controlShortcuts,
+                        favoriteTriggers: [...favoriteTriggers],
+                        masterVolume: parseFloat(localStorage.getItem('masterVolume') || '1'),
+                        selectedInputDevice: localStorage.getItem('selectedInputDevice'),
+                        selectedOutputDevice: localStorage.getItem('selectedOutputDevice'),
+                        gains: loadGains(),
+                    }), null, 2));
+
+                const blob = await zip.generateAsync({ type: 'blob' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `triggerword-backup-${new Date().toISOString().slice(0,10)}.zip`;
+                a.click();
+                URL.revokeObjectURL(url);
+                updateStatus('✅ Backup exported', 'success');
+            } catch (e) {
+                showPersistenceWarning(`Backup failed: ${e.message}. Nothing was changed.`);
+            }
+        }
+
+        // Restores a backup ZIP. If triggerword-backup.json is absent (an old
+        // plain soundpack), falls back to the existing handleZipFile() path
+        // unchanged — this is the "old pack still imports as today" guarantee.
+        async function importBackup(file) {
+            try {
+                const zip = await JSZip.loadAsync(file);
+                const manifestFile = zip.file('triggerword-backup.json');
+                if (!manifestFile) {
+                    updateStatus('No backup settings in this ZIP — importing as a soundpack');
+                    return handleZipFile(file);       // existing soundpack path, unchanged
+                }
+                const { settings, warnings } =
+                    window.persistence.parseBackupManifest(await manifestFile.async('string'));
+                warnings.forEach(showPersistenceWarning);
+                if (settings) {
+                    if (settings.globalSettings)
+                        localStorage.setItem('globalSettings', JSON.stringify(settings.globalSettings));
+                    if (settings.keyboardShortcuts)
+                        localStorage.setItem('keyboardShortcuts', JSON.stringify(settings.keyboardShortcuts));
+                    if (settings.controlShortcuts)
+                        localStorage.setItem('controlShortcuts', JSON.stringify(settings.controlShortcuts));
+                    if (settings.favoriteTriggers)
+                        localStorage.setItem('favoriteTriggers', JSON.stringify(settings.favoriteTriggers));
+                    if (settings.masterVolume != null)
+                        localStorage.setItem('masterVolume', String(settings.masterVolume));
+                    if (settings.gains)
+                        localStorage.setItem('soundGains', JSON.stringify(settings.gains));
+                }
+                await handleZipFile(file);            // sounds + triggers via the existing path
+                updateStatus('✅ Backup restored', 'success');
+            } catch (e) {
+                showPersistenceWarning(`Restore failed: ${e.message}. Nothing was changed.`);
+            }
+        }
+
         // Global Settings Export/Import Functions
         function exportGlobalSettings() {
             try {
@@ -6970,12 +7059,15 @@
         importZipBtn.addEventListener('click', () => {
             importZipInput.click();
         });
-        
-        importZipInput.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
+
+        // Extracted from the file-input change handler so importBackup()
+        // (backup ZIP restore) can drive the same soundpack-loading path a
+        // plain .zip drop uses. No function of this name existed before —
+        // `grep -n "function handleZipFile" index.html` returned nothing;
+        // this was the file input's inline handler body, moved out unchanged.
+        async function handleZipFile(file) {
             updateStatus('Importing ZIP soundpack...');
-            
+
             try {
                 const zip = await JSZip.loadAsync(file);
                 const manifestFile = zip.file('soundpack.json');
@@ -7113,6 +7205,12 @@
                 console.error('ZIP import error:', err);
                 updateStatus('❌ Failed to import ZIP: ' + err.message, 'error');
             }
+        }
+
+        importZipInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            await handleZipFile(file);
         });
 
         // Button event listeners
@@ -9069,7 +9167,16 @@
             reader.readAsText(file);
         });
         document.getElementById('resetAllSettingsBtn')?.addEventListener('click', resetAllGlobalSettings);
-        
+
+        // Backup ZIP Export/Import Event Listeners
+        document.getElementById('exportBackupBtn')?.addEventListener('click', exportBackup);
+        document.getElementById('importBackupBtn')?.addEventListener('click',
+            () => document.getElementById('importBackupInput').click());
+        document.getElementById('importBackupInput')?.addEventListener('change', function () {
+            if (this.files[0]) importBackup(this.files[0]);
+            this.value = '';
+        });
+
         // Initialize on page load
         window.addEventListener('DOMContentLoaded', async () => {
             updateStatus('Initializing...');
