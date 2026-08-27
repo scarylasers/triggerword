@@ -48,8 +48,14 @@ You need **Google Chrome or Microsoft Edge**. Nothing else installs.
 3. TriggerWord opens in its own window (or at **http://localhost:8002** in a
    browser tab if neither Chrome nor Edge is installed).
 4. **Click "Allow"** when it asks for your microphone. Nothing works without it.
-5. Drop a soundpack ZIP onto the page, or add sounds one at a time.
-6. Say one of your trigger words.
+5. Import the included **`TriggerWord-Starter-Pack.zip`** (use *Import backup*
+   in the 🔧 menu to also get favorites) — original SCARYLASERS sounds and
+   songs, stream-safe. Or add your own sounds one at a time.
+6. Say one of your trigger words. Try **"lasers"**. Say **"quiet"** to fade
+   everything out — including the full songs.
+
+The full manual lives in **[guide.html](guide.html)** — also reachable from the
+⚙️ settings inside the app (❓ User Guide).
 
 To stop it: close the black window.
 
@@ -177,6 +183,20 @@ I/O stays in `index.html`.
 
 ---
 
+## Support
+
+TriggerWord is free, part of the [Hopzle Toolkit](https://hopzle.com), made by
+[SCARYLASERS](https://www.youtube.com/@ScaryLasers). If it made your stream
+funnier, tips keep the toolkit growing: **[ko-fi.com/scarylasers_](https://ko-fi.com/scarylasers_)** ☕
+
+[YouTube](https://www.youtube.com/@ScaryLasers) ·
+[Twitch](https://www.twitch.tv/scarylasers) ·
+[TikTok](https://www.tiktok.com/@scarylasers) ·
+[Instagram](https://www.instagram.com/scarylasers_) ·
+[X](https://x.com/ScaryLasers) ·
+[Reddit](https://www.reddit.com/user/scarylasers/)
+
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). The starter-pack songs are original SCARYLASERS
+tracks, included for personal soundboard use.

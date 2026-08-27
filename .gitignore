@@ -5,6 +5,8 @@ soundpack/
 soundpack_export/
 SOUNDPACKS/
 *.zip
+# ...except the starter pack the app ships with
+!TriggerWord-Starter-Pack.zip
 
 # Python
 __pycache__/

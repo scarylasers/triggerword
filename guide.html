@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#ffcc00">
+<title>TriggerWord — User Guide</title>
+<link rel="icon" href="/favicon.ico">
+<style>
+  :root{
+    --ink:#0c1116; --ink2:#141c24; --ink3:#0f1820;
+    --line:#22303c; --text:#e8f1f5; --muted:#8fa5b3;
+    --cyan:#16e0d2; --magenta:#ff2fd0; --yellow:#ffcc00; --green:#3dfc3d;
+    --teal:#19e6c8;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--ink); color:var(--text);
+    font-family:'Segoe UI',system-ui,sans-serif; line-height:1.65;
+    border:4px solid var(--yellow); min-height:100vh;
+  }
+  .wrap{max-width:860px;margin:0 auto;padding:32px 24px 64px}
+  header{text-align:center;padding:36px 0 18px}
+  header img{max-width:280px;height:auto;filter:drop-shadow(0 0 24px rgba(22,224,210,.35))}
+  header h1{font-size:2rem;margin-top:12px;letter-spacing:.04em}
+  header .tag{color:var(--cyan);font-weight:600}
+  .hopzle{color:var(--muted);font-size:.85rem;letter-spacing:.18em;text-transform:uppercase;margin-top:6px}
+  .hopzle a{color:var(--cyan)}
+  nav{background:var(--ink2);border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin:24px 0}
+  nav a{color:var(--teal);text-decoration:none;margin-right:14px;white-space:nowrap;font-size:.95rem}
+  nav a:hover{color:var(--yellow)}
+  h2{color:var(--yellow);margin:44px 0 12px;font-size:1.4rem;border-bottom:2px solid var(--line);padding-bottom:6px}
+  h3{color:var(--cyan);margin:22px 0 8px;font-size:1.05rem}
+  p{margin:10px 0}
+  a{color:var(--cyan)}
+  .card{background:var(--ink2);border:1px solid var(--line);border-left:4px solid var(--cyan);border-radius:10px;padding:14px 18px;margin:14px 0}
+  .card.warn{border-left-color:var(--yellow)}
+  .card.fun{border-left-color:var(--magenta)}
+  kbd{background:var(--ink3);border:1px solid var(--line);border-bottom-width:3px;border-radius:6px;padding:1px 8px;font-family:Consolas,monospace;font-size:.9em}
+  code{background:var(--ink3);border-radius:5px;padding:1px 6px;font-family:Consolas,monospace;font-size:.9em;color:var(--teal)}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:.95rem}
+  th,td{border:1px solid var(--line);padding:8px 12px;text-align:left}
+  th{background:var(--ink3);color:var(--cyan)}
+  td:first-child{white-space:nowrap;color:var(--yellow);font-weight:600}
+  ul,ol{margin:8px 0 8px 24px}
+  li{margin:5px 0}
+  .say{color:var(--magenta);font-weight:700}
+  footer{margin-top:60px;border-top:2px solid var(--line);padding-top:28px;text-align:center}
+  .links{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:16px 0}
+  .links a{background:var(--ink2);border:1px solid var(--line);border-radius:999px;padding:8px 18px;text-decoration:none;color:var(--text);font-size:.95rem}
+  .links a:hover{border-color:var(--cyan);color:var(--cyan)}
+  .links a.kofi{border-color:var(--magenta);color:var(--magenta);font-weight:700}
+  .links a.kofi:hover{background:var(--magenta);color:var(--ink)}
+  .smallprint{color:var(--muted);font-size:.85rem;margin-top:18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <img src="static/images/Triggerword_logo_medium.png" alt="TriggerWord">
+  <h1>User Guide</h1>
+  <p class="tag">A soundboard that listens. Say the word, get the sound, keep talking.</p>
+  <p class="hopzle">Part of the <a href="https://hopzle.com">Hopzle Toolkit</a> · by <a href="https://www.youtube.com/@ScaryLasers">SCARYLASERS</a></p>
+</header>
+
+<nav>
+  <a href="#start">Getting started</a>
+  <a href="#pack">Starter pack</a>
+  <a href="#sounds">Your own sounds</a>
+  <a href="#shortcuts">Shortcuts</a>
+  <a href="#stop">Stopping sounds</a>
+  <a href="#levelling">Levelling</a>
+  <a href="#backups">Backups</a>
+  <a href="#look">Look &amp; feel</a>
+  <a href="#advanced">Advanced</a>
+  <a href="#trouble">Troubleshooting</a>
+  <a href="#support">Support</a>
+</nav>
+
+<h2 id="start">Getting started</h2>
+<ol>
+  <li><strong>Download the repository</strong> — green <em>Code</em> button → <em>Download ZIP</em> → unzip it somewhere you'll find again.</li>
+  <li><strong>Double-click <code>start-triggerword.bat</code></strong>. TriggerWord opens in its own window.</li>
+  <li><strong>Click "Allow"</strong> when it asks for your microphone. <em>Nothing works without this</em> — if you deny it, every device dropdown will look empty (see <a href="#trouble">Troubleshooting</a>).</li>
+  <li>Import a soundpack (below) or add sounds one at a time.</li>
+  <li>Click <strong>Listen for triggers</strong> and say one of your trigger words.</li>
+</ol>
+<div class="card warn">
+  <strong>You need Google Chrome or Microsoft Edge.</strong> Speech recognition and
+  per-sound output routing are Chromium features — Firefox and Safari won't work.
+  You also need <a href="https://www.python.org/downloads/">Python</a> ("Add
+  Python to PATH" ticked during install). No Python packages are required.
+</div>
+<div class="card fun">
+  <strong>The fine line.</strong> A sound that lands once is a joke; the same sound
+  five times a minute is a reason to mute you. Pick trigger words you say at
+  moments that actually deserve a sound. Cooldowns exist on purpose — leave them on.
+  The people listening did not consent to an airhorn.
+</div>
+
+<h2 id="pack">The starter pack</h2>
+<p>The repo ships with <code>TriggerWord-Starter-Pack.zip</code> — original
+SCARYLASERS sounds and songs to play with while you build your own library.
+Import it with <strong>Import backup</strong> (in the 🔧 menu) to also get a set
+of favorites pre-marked, or drop the ZIP on the page to import just the sounds.</p>
+<table>
+  <tr><th>Say…</th><th>What happens</th></tr>
+  <tr><td>"lasers" / "laser show"</td><td>A random laser zap (three flavors)</td></tr>
+  <tr><td>"boing" / "bounce"</td><td>A springy bunny-hop boing</td></tr>
+  <tr><td>"winner" / "we won"</td><td>Victory fanfare</td></tr>
+  <tr><td>"tada"</td><td>Ta-da! arpeggio</td></tr>
+  <tr><td>"epic fail"</td><td>Sad descending fail</td></tr>
+  <tr><td>"airhorn"</td><td>You know exactly what this does</td></tr>
+  <tr><td>"riot"</td><td>Full song: <em>Riot</em> — SCARYLASERS</td></tr>
+  <tr><td>"six thousand"</td><td>Full song: <em>6000 Games</em> — SCARYLASERS</td></tr>
+  <tr><td>"floppy"</td><td>Full song: <em>Floppy Eared Terror</em> — SCARYLASERS</td></tr>
+</table>
+<p>The songs have long cooldowns (5 minutes) so they can't accidentally loop your
+stream into a concert. To cut a song off early, just say
+<span class="say">"quiet"</span> — see <a href="#stop">Stopping sounds</a>.</p>
+
+<h2 id="sounds">Adding your own sounds</h2>
+<ul>
+  <li><strong>Add a trigger</strong> with the ➕ button, give it a word (or several,
+  comma-separated — they all fire the same sounds).</li>
+  <li><strong>Attach one or many sounds</strong> — with several, one is picked at
+  random each time. Variety is what keeps a trigger funny.</li>
+  <li><strong>Cooldown</strong> is per-trigger, in seconds. Short for stingers,
+  long for songs.</li>
+  <li><strong>Quick Record</strong> (<kbd>Ctrl</kbd>+<kbd>R</kbd> by default) records
+  from your mic straight into a sound — great for making your own drops on the spot.</li>
+  <li><strong>Time-Shift</strong> keeps a rolling buffer of the last seconds of
+  audio, so when something funny happens you can capture it <em>after</em> it happened.</li>
+</ul>
+
+<h2 id="shortcuts">Favorites &amp; keyboard shortcuts</h2>
+<ul>
+  <li>❤️ a trigger to make it a <strong>favorite</strong>. Favorites fire from
+  <kbd>F1</kbd>–<kbd>F12</kbd>, <kbd>Alt</kbd>+<kbd>1–9</kbd> and the numpad,
+  in the order they appear.</li>
+  <li>Assign <strong>any key</strong> to any trigger in Settings → Trigger
+  Shortcuts (press-to-learn).</li>
+  <li><strong>Control shortcuts</strong> bind keys to app functions: start/stop
+  listening, quick record, time-shift capture, and <em>Fade Out All Sounds</em>.</li>
+  <li>By default a pressed shortcut <strong>bypasses the cooldown</strong> — a
+  deliberate press should always fire. Turn that off in Settings → Trigger
+  Shortcuts if you want presses to respect cooldowns like voice does.</li>
+  <li>Pressing a trigger while another sound is playing <strong>chokes</strong> the
+  playing one (cuts it instantly, drum-pad style) instead of layering both.</li>
+</ul>
+
+<h2 id="stop">Stopping sounds — the "quiet" word</h2>
+<p>Three ways to stop everything that's playing, all with a smooth 1-second fade
+instead of a hard cut:</p>
+<ul>
+  <li>Say <span class="say">"quiet"</span> — this works even while a song is
+  blasting; it's the only word TriggerWord listens for during playback.</li>
+  <li>Click the <strong>🔇 button</strong> in the header.</li>
+  <li>Bind a key to <strong>Fade Out All Sounds</strong> in control shortcuts.</li>
+</ul>
+<p>This is what makes full songs usable on a soundboard: trigger a track, talk
+over it, and kill it on demand.</p>
+
+<h2 id="levelling">Levelling — why nothing blasts your listeners</h2>
+<p>Sounds collected from everywhere arrive at wildly different volumes.
+TriggerWord measures every sound once when you add it and turns the loud ones
+down so they sit together. If one still isn't right, every sound has a
+<strong>trim slider</strong> (±12&nbsp;dB) and an <strong>auto</strong> button to reset it.
+Because levelling only ever turns sounds <em>down</em>, everything ends up a touch
+quieter overall — compensate with the master volume.</p>
+
+<h2 id="backups">Backups — read this once</h2>
+<p>Your sounds live in your browser's storage. Browsers get cleared and profiles
+get reset. <strong>Export backup (everything)</strong> writes one ZIP with your
+sounds, triggers, favorites, shortcuts, settings and volume trims — keep it
+somewhere that isn't your browser. <strong>Import backup</strong> puts it all
+back. A backup ZIP is also a normal soundpack, so it can be shared with friends.</p>
+
+<h2 id="look">Look &amp; feel</h2>
+<ul>
+  <li><strong>🌙 Dark theme</strong> — toggle in the header, remembered between sessions.</li>
+  <li><strong>Install as an app</strong> — open <code>http://localhost:8002</code>
+  in a normal Chrome tab and click the install icon in the address bar. You get a
+  real TriggerWord app window with its own icon and yellow title bar.</li>
+  <li>The yellow border is on purpose. It means this window is TriggerWord.</li>
+</ul>
+
+<h2 id="advanced">Advanced: full mode &amp; global hotkeys</h2>
+<p>Out of the box TriggerWord runs on a zero-dependency file server. If you
+install the optional packages (<code>pip install -r requirements.txt</code> — a
+large download including torch), the same <code>start-triggerword.bat</code>
+automatically switches to full mode:</p>
+<ul>
+  <li>A local <strong>Whisper transcription server</strong> (offline speech recognition).</li>
+  <li><strong>Global hotkeys</strong>: keys <kbd>F13</kbd>–<kbd>F24</kbd> (macro
+  pads, stream decks, BLE remotes) fire triggers <em>even when the TriggerWord
+  window isn't focused</em>.</li>
+  <li>Everything runs hidden — no terminal windows. Closing the TriggerWord
+  window shuts the whole thing down after a few seconds.</li>
+</ul>
+
+<h2 id="trouble">Troubleshooting</h2>
+<h3>The device dropdowns are empty</h3>
+<p>Microphone permission was denied at some point and the browser remembered it.
+Open <code>chrome://settings/content/microphone</code>, add
+<code>http://localhost:8002</code> under <em>Allowed</em>, and restart the app.</p>
+<h3>Nothing happens when I speak</h3>
+<p>Check the microphone dropdown is set to the mic you're actually using and that
+the page says it's listening. Speech recognition needs a moment of clear speech —
+it won't catch one muttered syllable.</p>
+<h3>Sounds play to the wrong device</h3>
+<p>Set the output device <em>in the app</em>, not just in Windows. Routing to a
+virtual cable is how you get soundboard audio into a stream.</p>
+<h3>I lost my soundpack</h3>
+<p>Import your backup ZIP. If you don't have one, make one now — seriously.</p>
+
+<footer id="support">
+  <h2 style="border:none">Made by SCARYLASERS 🐰</h2>
+  <p>TriggerWord is free and always will be. If it made your stream funnier,
+  a coffee keeps the toolkit growing:</p>
+  <div class="links">
+    <a class="kofi" href="https://ko-fi.com/scarylasers_">☕ Tip on Ko-fi</a>
+  </div>
+  <div class="links">
+    <a href="https://www.youtube.com/@ScaryLasers">YouTube</a>
+    <a href="https://www.twitch.tv/scarylasers">Twitch</a>
+    <a href="https://www.tiktok.com/@scarylasers">TikTok</a>
+    <a href="https://www.instagram.com/scarylasers_">Instagram</a>
+    <a href="https://x.com/ScaryLasers">X</a>
+    <a href="https://www.reddit.com/user/scarylasers/">Reddit</a>
+  </div>
+  <div class="links">
+    <a href="https://hopzle.com">Hopzle Toolkit</a>
+    <a href="https://github.com/scarylasers/triggerword">GitHub</a>
+  </div>
+  <p class="smallprint">The starter pack songs are original SCARYLASERS tracks —
+  stream-safe, no copyright strikes. MIT licensed. Use it responsibly:
+  the people listening did not consent to an airhorn.</p>
+</footer>
+
+</div>
+</body>
+</html>

@@ -53,6 +53,11 @@ async def serve_persistence():
 async def serve_manifest():
     return FileResponse("manifest.json", media_type="application/manifest+json", headers=NO_CACHE)
 
+# User guide (also linked from the settings modal)
+@app.get("/guide.html")
+async def serve_guide():
+    return FileResponse("guide.html", headers=NO_CACHE)
+
 # Serve static files from the static directory
 static_dir = Path(__file__).parent / "static"
 if static_dir.exists():
