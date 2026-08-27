@@ -12,6 +12,9 @@ __pycache__/
 venv/
 .venv/
 
+# Runtime logs from the hidden server/router (full mode)
+triggerword-*.log
+
 # Editor / OS
 .idea/
 Thumbs.db

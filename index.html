@@ -11,13 +11,55 @@
       window.dispatchEvent(new Event('persistence-ready'));
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- theme-color + manifest make TriggerWord installable as a real app
+         (yellow title bar applies once installed; plain --app windows ignore
+         theme-color, which is why the page draws its own yellow frame) -->
+    <meta name="theme-color" content="#ffcc00">
+    <link rel="manifest" href="/manifest.json">
     <title>TriggerWord</title>
+    <!-- Apply the saved theme before first paint so dark mode doesn't flash white -->
+    <script>try{if(localStorage.getItem('twDarkTheme')==='true')document.documentElement.classList.add('dark-theme');}catch(e){}</script>
+    <style>
+        /* Yellow app frame - drawn above everything, immune to the dark
+           overlay below it, so the window always reads as TriggerWord. */
+        html::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            border: 3px solid #ffcc00;
+            pointer-events: none;
+            z-index: 2147483647;
+        }
+
+        /* Dark theme: one fixed overlay inverts everything painted beneath
+           it. backdrop-filter (not filter on body/html) because an ancestor
+           filter would re-anchor the app's position:fixed modals to the
+           document instead of the viewport and break them. hue-rotate(180)
+           after the invert keeps button/status colors on their original hue. */
+        html.dark-theme::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            backdrop-filter: invert(0.93) hue-rotate(180deg);
+            pointer-events: none;
+            z-index: 2147483000;
+        }
+        html.dark-theme {
+            /* Dark native scrollbars; the page itself is darkened by the
+               overlay (the default white canvas inverts to near-black, so no
+               explicit background here - a dark one would invert to light). */
+            color-scheme: dark;
+        }
+    </style>
     <link rel="icon" href="/favicon.ico">
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <link rel="icon" type="image/png" href="/static/favicon.ico">
     <link rel="icon" type="image/png" href="static/images/Triggerword_logo_medium.png">
 </head>
 <body>
+    <!-- The intro splash lives in splash.py: a transparent desktop window
+         the launchers show while the app boots, instead of an in-page one -->
+
     <div id="persistenceWarning" style="display:none;position:sticky;top:0;z-index:9999;
          background:#3a2a00;color:#ffd479;border-bottom:1px solid #7a5a00;
          padding:10px 14px;font-size:14px;">
@@ -84,9 +126,11 @@
                 <button id="stopBtnSticky" class="control-btn stop-btn" disabled>⏹️</button>
             </div>
         <div class="file-controls">
-            <button id="importZipBtnSticky" class="control-btn file-btn" title="Import ZIP Soundpack">📁</button>
+            <button id="importZipBtnSticky" class="control-btn file-btn" title="Import ZIP Soundpack">📥</button>
             <button id="exportZipBtnSticky" class="control-btn file-btn" title="Export ZIP Soundpack">📤</button>
             <button id="actionMenuBtn" class="control-btn file-btn" title="Show/Hide Import/Export Menu">🔧</button>
+            <button id="themeToggleBtn" class="control-btn file-btn" title="Toggle dark theme">🌙</button>
+            <button id="stopAllBtn" class="control-btn file-btn" title="Fade out all sounds (or say 'quiet')">🔇</button>
             <button id="addTriggerBtn" class="control-btn file-btn" title="Add New Trigger">➕</button>
             <button id="quickRecordBtn" class="control-btn file-btn" title="Quick Record">🎙️</button>
             <button id="timeShiftBtn" class="control-btn file-btn" title="Start Time-Shift Recording">🕒</button>
@@ -231,6 +275,7 @@
                             <option value="toggle_time_shift">Toggle Time-Shift Recording</option>
                             <option value="capture_time_shift">Capture Time-Shift Buffer</option>
                             <option value="play_latest_recording">Play Latest Recording</option>
+                            <option value="fade_out_sounds">Fade Out All Sounds</option>
                         </select>
                         
                         <button id="assignControlShortcutBtn" type="button" style="background: #4caf50; padding: 6px 12px; white-space: nowrap;">
@@ -258,6 +303,14 @@
             <div class="settings-section" style="margin-top: 20px; border-top: 1px solid #ddd; padding-top: 15px;">
                 <h4>⌨️ Trigger Shortcuts</h4>
                 <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">Configure keyboard shortcuts for your favorite triggers. You can assign triggers to any keyboard key including function keys, numpad, and combinations with Alt or Ctrl.</p>
+
+                <div style="margin-bottom: 15px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="shortcutsBypassCooldownToggle" checked>
+                        <span>⚡ Shortcut presses bypass cooldown</span>
+                    </label>
+                    <p style="font-size: 0.85em; color: #666; margin: 4px 0 0 24px;">On: a pressed key always fires immediately, even mid-cooldown or while another sound is playing. Off: shortcuts respect cooldowns just like voice triggers.</p>
+                </div>
                 
                 <!-- Current shortcuts display -->
                 <div style="margin-bottom: 15px;">
@@ -1698,7 +1751,8 @@
                             'stop_listening': 'Stop Listening',
                             'toggle_time_shift': 'Toggle Time-Shift Recording',
                             'capture_time_shift': 'Capture Time-Shift Buffer',
-                            'play_latest_recording': 'Play Latest Recording'
+                            'play_latest_recording': 'Play Latest Recording',
+                            'fade_out_sounds': 'Fade Out All Sounds'
                         }[controlFunction] || controlFunction;
                         
                         html += `
@@ -2789,7 +2843,8 @@
                         enableWordBoundaryMatching: globalSettings.enableWordBoundaryMatching,
                         enableMorphologicalMatching: globalSettings.enableMorphologicalMatching,
                         minWordLength: globalSettings.minWordLength,
-                        timeShiftBufferSize: globalSettings.timeShiftBufferSize
+                        timeShiftBufferSize: globalSettings.timeShiftBufferSize,
+                        shortcutsBypassCooldown: shortcutsBypassCooldown
                     },
                     keyboardShortcuts: keyboardShortcuts,
                     controlShortcuts: controlShortcuts,
@@ -2863,6 +2918,13 @@
                     
                     if (typeof importData.globalSettings.minWordLength === 'number') {
                         globalSettings.minWordLength = importData.globalSettings.minWordLength;
+                    }
+
+                    if (typeof importData.globalSettings.shortcutsBypassCooldown === 'boolean') {
+                        shortcutsBypassCooldown = importData.globalSettings.shortcutsBypassCooldown;
+                        localStorage.setItem('shortcutsBypassCooldown', String(shortcutsBypassCooldown));
+                        const toggle = document.getElementById('shortcutsBypassCooldownToggle');
+                        if (toggle) toggle.checked = shortcutsBypassCooldown;
                     }
                 }
                 
@@ -3406,7 +3468,18 @@
             }
             
             const normalizedTranscript = normalizeText(transcript);
-            
+
+            // Voice stop word: fades out everything currently playing. Checked
+            // before the playback gate below so it works mid-song.
+            if (STOP_WORDS.some(w => normalizedTranscript.includes(normalizeText(w)))) {
+                if (fadeOutAllSamples()) return;
+            }
+
+            // While a sample is playing (or transcription is feedback-blocked),
+            // ONLY the stop word above is listened for - normal triggers stay
+            // muted exactly as before.
+            if (isPlayingSample || isMicMuted || isBlockingTranscription) return;
+
             // Only log when there are potential matches or for debugging
             let foundMatches = [];
             let checkedTriggers = 0;
@@ -4467,6 +4540,62 @@
             return ((t && t.cooldown) ? t.cooldown : 10) * 1000;
         }
 
+        // The trigger sound currently playing: {audio, url, word, fallbackTimeout}.
+        // Tracked so a new trigger can choke it instead of layering.
+        let currentTriggerAudio = null;
+
+        // ---- Stop-all / fade-out --------------------------------------------
+        // Saying a stop word (or the 🔇 button / a control shortcut) fades out
+        // every playing sample - the way to kill a full song on demand.
+        const STOP_WORDS = ['quiet'];
+
+        // Every Audio the app creates is registered here so stop-all can find
+        // them; window.Audio is wrapped once instead of touching each of the
+        // many play sites individually.
+        const activeAudios = new Set();
+        const NativeAudio = window.Audio;
+        window.Audio = function(src) {
+            const a = src === undefined ? new NativeAudio() : new NativeAudio(src);
+            activeAudios.add(a);
+            a.addEventListener('ended', () => activeAudios.delete(a));
+            return a;
+        };
+        window.Audio.prototype = NativeAudio.prototype;
+
+        function fadeOutAllSamples(fadeMs = 1200) {
+            const playing = [...activeAudios].filter(a => !a.paused && !a.ended);
+            if (playing.length === 0) return false;
+            console.log(`🔇 Fading out ${playing.length} playing sample(s)`);
+            updateStatus('🔇 Fading out all sounds', 'info');
+            playing.forEach(audio => {
+                const startVol = audio.volume;
+                const t0 = performance.now();
+                // setInterval, not requestAnimationFrame - rAF stops in an
+                // unfocused window and this must work via global hotkeys.
+                const timer = setInterval(() => {
+                    const k = (performance.now() - t0) / fadeMs;
+                    if (k >= 1 || audio.paused) {
+                        clearInterval(timer);
+                        audio.pause();
+                        activeAudios.delete(audio);
+                        if (currentTriggerAudio && currentTriggerAudio.audio === audio) {
+                            const cur = currentTriggerAudio;
+                            currentTriggerAudio = null;
+                            clearTimeout(cur.fallbackTimeout);
+                            highlightTriggerCard(cur.word, false);
+                            URL.revokeObjectURL(cur.url);
+                            isPlayingSample = false;
+                            isMicMuted = false;
+                            isAudioLocked = false;
+                        }
+                    } else {
+                        audio.volume = startVol * (1 - k);
+                    }
+                }, 50);
+            });
+            return true;
+        }
+
         async function handleTrigger(triggerType, bypassCooldown = false) {
             const normType = normalizeWord(triggerType);
             let found = triggers.find(t => normalizeWord(t.word) === normType);
@@ -4477,6 +4606,21 @@
             if (found && found.sounds && found.sounds.length > 0) {
                 const lastFired = triggerCooldowns[found.word] || 0;
                 const cdMs = getCooldownMs(found.word);
+
+                // Drum-pad style choke: starting a new trigger silences the one
+                // still playing instead of layering on top of it (relevant when
+                // shortcut presses bypass the audio lock).
+                function chokeCurrentAudio() {
+                    const cur = currentTriggerAudio;
+                    if (!cur) return;
+                    currentTriggerAudio = null;
+                    try { cur.audio.pause(); } catch (e) {}
+                    cur.audio.onended = null;
+                    clearTimeout(cur.fallbackTimeout);
+                    highlightTriggerCard(cur.word, false);
+                    URL.revokeObjectURL(cur.url);
+                    console.log('🔇 Choked:', cur.word);
+                }
                 
                 // Check if another audio is already playing
                 if (isAudioLocked && !bypassCooldown) {
@@ -4489,6 +4633,7 @@
                     cssClass = 'cooldown-msg';
                 } else {
                     try {
+                        chokeCurrentAudio();
                         triggerCooldowns[found.word] = now;
                         isPlayingSample = true;
                         isMicMuted = true; // Mute mic during playback
@@ -4532,7 +4677,7 @@
                             audio.volume = Math.max(0, Math.min(1, masterVolume * levelledVolumeFor(s)));
                             
                             audio.play().catch(err => console.error('Audio play error:', err));
-                            
+
                             // Unmute mic after playback + small delay + remove visual feedback
                             audio.onended = () => {
                                 setTimeout(() => {
@@ -4541,19 +4686,42 @@
                                     isAudioLocked = false; // Unlock audio system
                                     highlightTriggerCard(found.word, false); // Remove visual feedback
                                     URL.revokeObjectURL(audioUrl);
+                                    if (currentTriggerAudio && currentTriggerAudio.audio === audio) {
+                                        clearTimeout(currentTriggerAudio.fallbackTimeout);
+                                        currentTriggerAudio = null;
+                                    }
                                     console.log('🔓 Audio unlocked - finished playing:', found.word);
                                 }, 300); // Small delay to prevent feedback
                             };
-                            
-                            // Fallback timeout in case onended doesn't fire
-                            setTimeout(() => {
+
+                            // Fallback in case onended doesn't fire. audio.duration is
+                            // NaN before metadata loads, so the first check lands at
+                            // ~3.5s; while the sound is genuinely still playing, keep
+                            // rescheduling (capped at 5 min) instead of cleaning up
+                            // under it - cleaning up early made long sounds unmute the
+                            // mic mid-play and broke choking.
+                            const playbackStartedAt = Date.now();
+                            const fallbackCleanup = () => {
+                                if (!audio.paused && !audio.ended && Date.now() - playbackStartedAt < 300000) {
+                                    const t = setTimeout(fallbackCleanup, 1000);
+                                    if (currentTriggerAudio && currentTriggerAudio.audio === audio) {
+                                        currentTriggerAudio.fallbackTimeout = t;
+                                    }
+                                    return;
+                                }
                                 isPlayingSample = false;
                                 isMicMuted = false;
                                 isAudioLocked = false; // Unlock audio system
                                 highlightTriggerCard(found.word, false); // Remove visual feedback
                                 URL.revokeObjectURL(audioUrl);
+                                if (currentTriggerAudio && currentTriggerAudio.audio === audio) {
+                                    currentTriggerAudio = null;
+                                }
                                 console.log('🔓 Audio unlocked - timeout fallback for:', found.word);
-                            }, (audio.duration || 3) * 1000 + 500);
+                            };
+                            const fallbackTimeout = setTimeout(fallbackCleanup, (audio.duration || 3) * 1000 + 500);
+
+                            currentTriggerAudio = { audio, url: audioUrl, word: found.word, fallbackTimeout };
                             
                             message = `🔊 Triggered: '${found.word}'`;
                             cssClass = 'triggered-msg';
@@ -4880,10 +5048,14 @@
         }
 
         function processAudio(e) {
-            if (!isRecording || isPaused || isPlayingSample || isMicMuted || isBlockingTranscription) {
+            // Audio keeps flowing during sample playback so the voice stop
+            // word ("quiet") can interrupt a song - checkForTriggers enforces
+            // stop-word-only matching while isPlayingSample/isMicMuted is set,
+            // so normal triggers remain muted during playback as before.
+            if (!isRecording || isPaused) {
                 // Only log occasionally to avoid spam
                 if (Math.random() < 0.01) { // 1% chance
-                    console.log('🔇 Audio processing skipped:', {isRecording, isPaused, isPlayingSample, isMicMuted, isBlockingTranscription});
+                    console.log('🔇 Audio processing skipped:', {isRecording, isPaused});
                 }
                 return;
             }
@@ -6261,6 +6433,11 @@
         let favoriteTriggers = new Set();
         let keyboardShortcuts = {}; // Map of key combinations to trigger words
         let controlShortcuts = {}; // Map of key combinations to control functions
+
+        // Whether shortcut/hotkey presses skip the cooldown and audio lock.
+        // Default ON: a deliberate press should always fire. Toggle in the
+        // Trigger Shortcuts settings; persisted like masterVolume.
+        let shortcutsBypassCooldown = localStorage.getItem('shortcutsBypassCooldown') !== 'false';
         
         function loadFavoritesFromStorage() {
             const savedFavorites = localStorage.getItem('favoriteTriggers');
@@ -8219,6 +8396,9 @@
                         await playFirstQuickRecording();
                         updateStatus('🔊 Playing latest recording...', 'info');
                         break;
+                    case 'fade_out_sounds':
+                        fadeOutAllSamples();
+                        break;
                 }
                 return;
             }
@@ -8411,7 +8591,7 @@
                     e.preventDefault();
                     const triggerWord = keyboardShortcuts[shortcutKey];
                     console.log(`🎹 Custom shortcut ${shortcutKey} triggered: ${triggerWord}`);
-                    handleTrigger(triggerWord, true); // Bypass cooldown for keyboard shortcuts
+                    handleTrigger(triggerWord, shortcutsBypassCooldown);
                     return;
                 }
                 
@@ -8429,7 +8609,7 @@
                         if (favoriteArray.length >= fKeyNum) {
                             const triggerWord = favoriteArray[fKeyNum - 1];
                             console.log(`🎹 Fallback shortcut ${key.toUpperCase()} triggered: ${triggerWord}`);
-                            handleTrigger(triggerWord, true); // Bypass cooldown for F-key shortcuts
+                            handleTrigger(triggerWord, shortcutsBypassCooldown);
                         } else {
                             console.log(`🎹 No trigger configured for ${key.toUpperCase()}`);
                         }
@@ -8440,7 +8620,7 @@
                         if (favoriteArray.length >= num) {
                             const triggerWord = favoriteArray[num - 1];
                             console.log(`🎹 Fallback shortcut Alt+${key} triggered: ${triggerWord}`);
-                            handleTrigger(triggerWord, true); // Bypass cooldown for Alt+number shortcuts
+                            handleTrigger(triggerWord, shortcutsBypassCooldown);
                         } else {
                             console.log(`🎹 No trigger configured for Alt+${key}`);
                         }
@@ -8453,7 +8633,7 @@
                         if (favoriteArray.length > favoriteIndex) {
                             const triggerWord = favoriteArray[favoriteIndex];
                             console.log(`🎹 Fallback shortcut Numpad ${key} triggered: ${triggerWord}`);
-                            handleTrigger(triggerWord, true); // Bypass cooldown for Numpad shortcuts
+                            handleTrigger(triggerWord, shortcutsBypassCooldown);
                         } else {
                             console.log(`🎹 No trigger configured for Numpad ${key}`);
                         }
@@ -9550,6 +9730,34 @@
         // Action Menu Button (in sticky header)
         document.getElementById('actionMenuBtn')?.addEventListener('click', toggleActionButtons);
         
+        // Fade-out-all button
+        document.getElementById('stopAllBtn')?.addEventListener('click', () => fadeOutAllSamples());
+
+        // Dark theme toggle (class applied pre-paint by the head script;
+        // this just wires the button and persistence)
+        const themeToggleBtn = document.getElementById('themeToggleBtn');
+        function applyDarkTheme(dark) {
+            document.documentElement.classList.toggle('dark-theme', dark);
+            if (themeToggleBtn) themeToggleBtn.textContent = dark ? '☀️' : '🌙';
+            try { localStorage.setItem('twDarkTheme', String(dark)); } catch (e) {}
+        }
+        if (themeToggleBtn) {
+            themeToggleBtn.textContent = document.documentElement.classList.contains('dark-theme') ? '☀️' : '🌙';
+            themeToggleBtn.addEventListener('click', () => {
+                applyDarkTheme(!document.documentElement.classList.contains('dark-theme'));
+            });
+        }
+
+        // Shortcut cooldown-bypass toggle
+        const bypassToggle = document.getElementById('shortcutsBypassCooldownToggle');
+        if (bypassToggle) {
+            bypassToggle.checked = shortcutsBypassCooldown;
+            bypassToggle.addEventListener('change', () => {
+                shortcutsBypassCooldown = bypassToggle.checked;
+                localStorage.setItem('shortcutsBypassCooldown', String(shortcutsBypassCooldown));
+            });
+        }
+
         // Keyboard Shortcut Learning Event Listeners
         document.getElementById('learnShortcutBtn')?.addEventListener('click', toggleShortcutLearning);
         
@@ -9668,6 +9876,45 @@
                 updateStatus('Initialization error: ' + error.message, 'error');
             }
         });
+
+        // Global hotkey bridge. The Python router captures F13-F24 system-wide
+        // and POSTs them to the local server, which relays them here over a
+        // WebSocket. Dispatching a synthetic keydown reuses the exact same
+        // shortcut-resolution path as a real keypress (custom shortcuts,
+        // control shortcuts, and the F-key favorites fallback), so triggers
+        // fire even when this window has no focus. The plain-http.server
+        // quickstart has no /ws/hotkeys endpoint — the connection just fails
+        // and retries quietly, costing nothing.
+        (function connectHotkeySocket(retryMs = 2000) {
+            if (location.protocol === 'file:') return;
+            let hotkeySocket;
+            try {
+                hotkeySocket = new WebSocket(`ws://${location.host}/ws/hotkeys`);
+            } catch (e) {
+                return;
+            }
+            hotkeySocket.onopen = () => {
+                retryMs = 2000;
+                console.log('🎛️ Global hotkey bridge connected');
+            };
+            hotkeySocket.onmessage = (event) => {
+                let msg;
+                try { msg = JSON.parse(event.data); } catch (e) { return; }
+                if (!msg.key) return;
+                console.log('🎛️ Global hotkey received:', msg.key);
+                document.dispatchEvent(new KeyboardEvent('keydown', {
+                    key: msg.key,
+                    code: msg.code || msg.key,
+                    ctrlKey: !!msg.ctrl,
+                    altKey: !!msg.alt,
+                    shiftKey: !!msg.shift,
+                    bubbles: true
+                }));
+            };
+            hotkeySocket.onclose = () => {
+                setTimeout(() => connectHotkeySocket(Math.min(retryMs * 2, 60000)), retryMs);
+            };
+        })();
 
         // Handle page unload
         window.addEventListener('beforeunload', () => {

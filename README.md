@@ -45,7 +45,8 @@ You need **Google Chrome or Microsoft Edge**. Nothing else installs.
    unzip it somewhere you'll find again.
 2. **Double-click `start-triggerword.bat`** (Windows).
    A black window opens and stays open. That is the app running — leave it.
-3. Your browser opens at **http://localhost:8002**.
+3. TriggerWord opens in its own window (or at **http://localhost:8002** in a
+   browser tab if neither Chrome nor Edge is installed).
 4. **Click "Allow"** when it asks for your microphone. Nothing works without it.
 5. Drop a soundpack ZIP onto the page, or add sounds one at a time.
 6. Say one of your trigger words.

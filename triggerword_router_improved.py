@@ -4,9 +4,29 @@ os.environ['COMTYPES_CACHE'] = os.path.join(os.path.expanduser('~'), '.comtypes_
 
 # Now safe to import everything else
 import re, sys, ctypes, time, atexit
+import json, urllib.request
 import keyboard                  # pip install keyboard (run as Admin)
 from pywinauto import Desktop    # pip install pywinauto
 import win32api, win32con, win32gui
+
+HOTKEY_ENDPOINT = "http://127.0.0.1:8002/hotkey"
+
+# Holding a key (or a BLE remote repeating) fires the hook once per OS key
+# repeat — collapse anything faster than this into one trigger.
+DEBOUNCE_SECONDS = 0.25
+_last_fired = {}
+
+# Bound for the whole lifetime of the process purely as a single-instance
+# lock: a second router would double-fire every hotkey.
+import socket
+_instance_lock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+def acquire_single_instance():
+    try:
+        _instance_lock.bind(("127.0.0.1", 8004))
+        return True
+    except OSError:
+        return False
 
 TITLE_REGEX = r".*TriggerWord.*Google Chrome.*"  # adjust if needed
 VERBOSE = True  # Enable verbose logging to debug key events
@@ -55,6 +75,34 @@ def focus_target():
     except:
         return False
 
+def route_via_server(key_name):
+    """Relay the key to the local server, which pushes it to the page over a
+    WebSocket. The page fires the trigger itself, so the TriggerWord window
+    never needs focus. Returns True only if at least one page received it."""
+    try:
+        body = json.dumps({"key": key_name.upper(), "code": key_name.upper()}).encode()
+        req = urllib.request.Request(
+            HOTKEY_ENDPOINT, data=body,
+            headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            delivered = json.load(resp).get("delivered", 0)
+        if VERBOSE: print(f"[SEND] {key_name} via server -> {delivered} client(s)")
+        return delivered > 0
+    except Exception as e:
+        if VERBOSE: print(f"[WARN] Server relay failed for {key_name}: {e}")
+        return False
+
+def route(key_name, vk_code):
+    """Prefer the no-focus server relay; fall back to the old focus-and-inject
+    path if the FastAPI server isn't running or no page is connected."""
+    now = time.monotonic()
+    if now - _last_fired.get(key_name, 0) < DEBOUNCE_SECONDS:
+        return
+    _last_fired[key_name] = now
+    if route_via_server(key_name):
+        return
+    route_improved(key_name, vk_code)
+
 def route_improved(key_name, vk_code):
     """Focus Chrome and send F-key using Win32 API for better compatibility."""
     global SENDING
@@ -98,9 +146,13 @@ def cleanup_on_exit():
     os._exit(0)
 
 def main():
+    if not acquire_single_instance():
+        print("[INFO] Another TriggerWord router is already running - exiting.")
+        return
+
     # Register cleanup function to run when script exits
     atexit.register(cleanup_on_exit)
-    
+
     if not is_admin():
         print("[WARN] Run this as Administrator so suppression works.\n")
 
@@ -130,10 +182,10 @@ def main():
         vk_code = fkey_vk_map.get(fk)
         if vk_code:
             try:
-                # Try improved routing with Win32 API first
-                keyboard.add_hotkey(fk, lambda k=fk, vk=vk_code: route_improved(k, vk), 
+                # Server relay first (no focus steal), Win32 injection fallback
+                keyboard.add_hotkey(fk, lambda k=fk, vk=vk_code: route(k, vk),
                                   suppress=True, trigger_on_release=False)
-                print(f"[SETUP] {fk.upper()} -> VK_0x{vk_code:02X} (Win32 API)")
+                print(f"[SETUP] {fk.upper()} -> server relay (Win32 fallback, VK_0x{vk_code:02X})")
             except Exception as e:
                 # Fallback to original method if Win32 approach fails
                 print(f"[WARN] Win32 setup failed for {fk}, using fallback: {e}")

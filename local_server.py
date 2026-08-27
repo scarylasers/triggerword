@@ -28,10 +28,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Browsers heuristically cache pages served without Cache-Control, which
+# left windows running week-old copies of the app. no-cache forces a
+# revalidation on every load (304 when unchanged, so still fast).
+NO_CACHE = {"Cache-Control": "no-cache"}
+
 # Serve the main page
 @app.get("/")
 async def serve_index():
-    return FileResponse("index.html")
+    return FileResponse("index.html", headers=NO_CACHE)
 
 # Serve the audio meter test page
 @app.get("/test_audio_meter.html")
@@ -41,12 +46,56 @@ async def serve_test_audio_meter():
 # Serve the persistence module (imported by index.html as './persistence.js')
 @app.get("/persistence.js")
 async def serve_persistence():
-    return FileResponse("persistence.js", media_type="application/javascript")
+    return FileResponse("persistence.js", media_type="application/javascript", headers=NO_CACHE)
+
+# Web app manifest - makes TriggerWord installable as a real app
+@app.get("/manifest.json")
+async def serve_manifest():
+    return FileResponse("manifest.json", media_type="application/manifest+json", headers=NO_CACHE)
 
 # Serve static files from the static directory
 static_dir = Path(__file__).parent / "static"
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+# --- Global hotkey relay -----------------------------------------------------
+# The router process (triggerword_router_improved.py) captures F13-F24
+# system-wide and POSTs them to /hotkey; every page connected to /ws/hotkeys
+# gets the event pushed and fires the trigger without needing window focus.
+
+import json
+
+hotkey_clients = set()
+
+@app.websocket("/ws/hotkeys")
+async def hotkey_socket(websocket: WebSocket):
+    await websocket.accept()
+    hotkey_clients.add(websocket)
+    print(f"🎛️ Hotkey client connected ({len(hotkey_clients)} total)")
+    try:
+        while True:
+            # The page never sends anything meaningful; this keeps the
+            # connection open and lets us notice the disconnect.
+            await websocket.receive_text()
+    except Exception:
+        pass
+    finally:
+        hotkey_clients.discard(websocket)
+        print(f"🎛️ Hotkey client disconnected ({len(hotkey_clients)} total)")
+
+@app.post("/hotkey")
+async def hotkey(request: Request):
+    payload = await request.json()
+    message = json.dumps(payload)
+    delivered = 0
+    for client in list(hotkey_clients):
+        try:
+            await client.send_text(message)
+            delivered += 1
+        except Exception:
+            hotkey_clients.discard(client)
+    print(f"🎛️ Hotkey {payload.get('key')} relayed to {delivered} client(s)")
+    return {"delivered": delivered}
 
 # WebSocket endpoint for real-time audio processing
 @app.websocket("/ws")
@@ -197,12 +246,7 @@ def cleanup_server_terminal():
     # Close this terminal window
     os._exit(0)
 
-# Shutdown endpoint
-@app.post("/shutdown")
-async def shutdown():
-    print("🔴 Shutdown request received")
-    
-    def close_server():
+def shutdown_everything():
         print("🔴 Closing TriggerWord server and router...")
         # Find and kill TriggerWord processes
         try:
@@ -218,7 +262,7 @@ async def shutdown():
                 print("Stopping TriggerWord Python processes...")
                 subprocess.run([
                     'powershell', '-Command',
-                    "Get-WmiObject Win32_Process -Filter \"Name='python.exe'\" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*local_server.py*' -or $_.CommandLine -like '*triggerword_router*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+                    "Get-WmiObject Win32_Process -Filter \"Name='python.exe' OR Name='pythonw.exe'\" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like '*local_server.py*' -or $_.CommandLine -like '*triggerword_router*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
                 ], check=False, capture_output=True, timeout=5)
                 
                 # Method 3: Force close any remaining cmd processes with TriggerWord in command line
@@ -238,11 +282,43 @@ async def shutdown():
         
         # Force exit this process and cleanup
         cleanup_server_terminal()
-    
-    # Start cleanup in a separate thread to allow response to be sent
-    threading.Timer(1.0, close_server).start()
-    
+
+# Shutdown endpoint
+@app.post("/shutdown")
+async def shutdown():
+    print("🔴 Shutdown request received")
+    # Run cleanup in a separate thread so the response can be sent first
+    threading.Timer(1.0, shutdown_everything).start()
     return {"status": "shutdown initiated"}
+
+# --- Auto-shutdown watchdog ---------------------------------------------------
+# The page holds a /ws/hotkeys connection whenever an app window is open, so
+# client count doubles as a presence signal. Once a window has connected at
+# least once, an empty client set lasting longer than the grace period means
+# the user closed the app - shut the whole stack down (server + router), so
+# closing the window is the only off switch anyone needs. A page reload
+# reconnects within a couple of seconds and never trips the grace period.
+WATCHDOG_GRACE_SECONDS = 15
+
+def presence_watchdog():
+    ever_connected = False
+    empty_since = None
+    while True:
+        time.sleep(2)
+        if hotkey_clients:
+            ever_connected = True
+            empty_since = None
+        elif ever_connected:
+            if empty_since is None:
+                empty_since = time.time()
+            elif time.time() - empty_since > WATCHDOG_GRACE_SECONDS:
+                print("🔴 All app windows closed - shutting down TriggerWord")
+                shutdown_everything()
+                return
+
+@app.on_event("startup")
+async def start_presence_watchdog():
+    threading.Thread(target=presence_watchdog, daemon=True).start()
 
 if __name__ == "__main__":
     # Register cleanup function to run when script exits
