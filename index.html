@@ -40,7 +40,10 @@
             content: '';
             position: fixed;
             inset: 0;
-            backdrop-filter: invert(0.93) hue-rotate(180deg);
+            /* Not a plain invert: desaturating and lifting brightness turns
+               the flipped colors into soft neutral dark tones instead of the
+               harsh "negative" look. */
+            backdrop-filter: invert(0.9) hue-rotate(180deg) saturate(0.55) brightness(1.12);
             pointer-events: none;
             z-index: 2147483000;
         }
