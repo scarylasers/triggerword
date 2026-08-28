@@ -40,12 +40,69 @@
             content: '';
             position: fixed;
             inset: 0;
-            /* Not a plain invert: desaturating and lifting brightness turns
-               the flipped colors into soft neutral dark tones instead of the
-               harsh "negative" look. */
-            backdrop-filter: invert(0.9) hue-rotate(180deg) saturate(0.55) brightness(1.12);
+            /* Not a plain invert: desaturating and lifting brightness gives
+               soft dark tones, and the hue rotation is chosen to land the
+               app's teal on a warm gold instead of murky green. */
+            backdrop-filter: invert(0.9) hue-rotate(51deg) saturate(0.6) brightness(1.12);
             pointer-events: none;
             z-index: 2147483000;
+        }
+        /* Logos, card art and the favorite hearts keep their true colors in
+           dark mode: painted above the darkening overlay. (Elements inside
+           modals are capped by their stacking context and stay filtered.) */
+        html.dark-theme img {
+            position: relative;
+            z-index: 2147483001;
+        }
+        html.dark-theme .favorite-btn {
+            z-index: 2147483001;
+        }
+        /* The card logo sits in an inline-styled absolute div (z-index 5) -
+           lift that wrapper so the art keeps its true colors too. */
+        html.dark-theme div:has(> img.card-logo) {
+            z-index: 2147483001 !important;
+        }
+
+        /* The header is lifted above the overlay so its emoji buttons keep
+           their true colors, then darkened deliberately: warm near-black
+           surfaces with gold buttons (per the design call: gold, not green). */
+        html.dark-theme .sticky-header {
+            z-index: 2147483001;
+            background: linear-gradient(181deg, #2c241a 0%, #171310 100%);
+        }
+        html.dark-theme .sticky-header .compact-select,
+        html.dark-theme .sticky-header .search-input {
+            background: #2e2822;
+            color: #ecdfc8;
+            border-color: #4a4034;
+        }
+        html.dark-theme .sticky-header .compact-transcript,
+        html.dark-theme .sticky-header .transcript-line {
+            background: #2e2822;
+            color: #cbbfa8;
+        }
+        html.dark-theme .sticky-header .control-btn,
+        html.dark-theme .sticky-header .pause-auto-trigger-btn,
+        html.dark-theme .sticky-header .live-search-toggle {
+            background: #d9a24a;
+            color: #221a10;
+        }
+        html.dark-theme .sticky-header .control-btn:hover:not(:disabled) {
+            background: #f0b95e;
+        }
+
+        /* Brand menu (logo dropdown in the header) */
+        .brand-menu-link {
+            display: block;
+            padding: 6px 16px;
+            color: #e8f1f5;
+            text-decoration: none;
+            font-size: 0.92em;
+            white-space: nowrap;
+        }
+        .brand-menu-link:hover {
+            background: #2a3b46;
+            color: #ffcc00;
         }
         html.dark-theme {
             /* Dark native scrollbars; the page itself is darkened by the
@@ -114,6 +171,23 @@
     <div id="stickyHeader" class="sticky-header">
         <!-- Main Controls Row -->
         <div class="sticky-controls-row">
+            <div id="brandMenu" style="position:relative;flex:0 0 auto;margin-right:8px;align-self:center;">
+                <img id="brandMenuBtn" src="static/images/Triggerword_logo_small.png" alt="TriggerWord" title="TriggerWord — links &amp; support" style="height:32px;width:auto;cursor:pointer;display:block;">
+                <div id="brandMenuDropdown" style="display:none;position:absolute;top:38px;left:0;background:#1d2b33;border:2px solid #ffcc00;border-radius:10px;padding:6px 0;min-width:215px;z-index:99999;box-shadow:0 8px 26px rgba(0,0,0,0.4);">
+                    <a href="https://discord.gg/r4z4EVnt9U" target="_blank" class="brand-menu-link">💬 Hopzle Discord — get help</a>
+                    <a href="https://ko-fi.com/scarylasers_" target="_blank" class="brand-menu-link" style="color:#ff2fd0;">☕ Tip on Ko-fi</a>
+                    <a href="/guide.html" target="_blank" class="brand-menu-link">❓ User Guide</a>
+                    <div style="border-top:1px solid #34454f;margin:5px 0;"></div>
+                    <a href="https://www.youtube.com/@ScaryLasers" target="_blank" class="brand-menu-link">▶️ YouTube</a>
+                    <a href="https://www.twitch.tv/scarylasers" target="_blank" class="brand-menu-link">🎮 Twitch</a>
+                    <a href="https://www.tiktok.com/@scarylasers" target="_blank" class="brand-menu-link">🎵 TikTok</a>
+                    <a href="https://www.instagram.com/scarylasers_" target="_blank" class="brand-menu-link">📷 Instagram</a>
+                    <a href="https://x.com/ScaryLasers" target="_blank" class="brand-menu-link">✖️ X</a>
+                    <div style="border-top:1px solid #34454f;margin:5px 0;"></div>
+                    <a href="https://hopzle.com" target="_blank" class="brand-menu-link">🧰 Hopzle Toolkit</a>
+                    <a href="https://github.com/scarylasers/triggerword" target="_blank" class="brand-menu-link">🐙 GitHub</a>
+                </div>
+            </div>
             <div class="device-controls">
                 <select id="audioSourceSticky" class="compact-select"></select>
                 <select id="audioOutputSticky" class="compact-select"></select>
@@ -185,6 +259,12 @@
                     <a href="/guide.html" target="_blank" style="background:#ffcc00;color:#222;padding:5px 12px;border-radius:4px;text-decoration:none;font-weight:600;">❓ User Guide</a>
                     <button id="closeGlobalSettings" style="background:#ccc;padding:5px 10px;border:none;border-radius:4px;cursor:pointer;">✕</button>
                 </div>
+            </div>
+
+            <div style="background:#fff8e1;border:2px solid #ffcc00;border-radius:8px;padding:10px 14px;margin-bottom:18px;font-size:0.92em;color:#5d4a00;">
+                🐰 <strong>Please use this tool responsibly.</strong> There is a fine
+                line between funny and annoying — cooldowns and restraint are what
+                keep you on the right side of it.
             </div>
             
             <div class="settings-section">
@@ -9778,6 +9858,18 @@
                 })
                 .catch(() => {});
         })();
+
+        // Brand menu: logo in the header opens the links/support dropdown
+        const brandMenuBtn = document.getElementById('brandMenuBtn');
+        const brandMenuDropdown = document.getElementById('brandMenuDropdown');
+        if (brandMenuBtn && brandMenuDropdown) {
+            brandMenuBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                brandMenuDropdown.style.display =
+                    brandMenuDropdown.style.display === 'none' ? 'block' : 'none';
+            });
+            document.addEventListener('click', () => { brandMenuDropdown.style.display = 'none'; });
+        }
 
         // Fade-out-all button
         document.getElementById('stopAllBtn')?.addEventListener('click', () => fadeOutAllSamples());

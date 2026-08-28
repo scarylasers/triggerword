@@ -86,6 +86,13 @@
   Needs <strong>Chrome or Edge</strong> and <a href="https://www.python.org/downloads/">Python</a>
   ("Add Python to PATH" ticked). No packages, no accounts — everything stays on your machine.
 </div>
+<div class="card warn">
+  🐰 <strong>Please use this tool responsibly.</strong> There is a fine line between
+  <em>funny</em> and <em>annoying</em>, and a listening soundboard sits right on it.
+  A sound that lands once is a joke; the same sound five times a minute is a reason
+  to mute you. Pick words you say at moments that deserve a sound, and leave
+  cooldowns on — they exist on purpose. The people listening did not consent to an airhorn.
+</div>
 
 <h2>The starter pack</h2>
 <p><strong>⚙️ Settings → Import backup</strong> → pick
@@ -133,6 +140,33 @@ browser's storage, so make a backup and keep it somewhere safe.</p>
 <p>Run <code>update-triggerword.bat</code> in the app folder — it grabs the newest
 version and restarts the app. Your sounds and settings are never touched. The app
 also tells you when a new version is out.</p>
+
+<h2>Advanced — the deep stuff</h2>
+<ul>
+  <li><strong>Quick Record</strong> (<kbd>Ctrl</kbd>+<kbd>R</kbd>) — records your mic
+  straight into a sound. Make a drop on the spot, mid-stream.
+  <kbd>Ctrl</kbd>+<kbd>1</kbd> plays your latest recording.</li>
+  <li><strong>Time-Shift</strong> (<kbd>Ctrl</kbd>+<kbd>T</kbd>) — keeps a rolling
+  buffer of the last seconds of audio. Something funny just happened?
+  <kbd>Ctrl</kbd>+<kbd>R</kbd> captures it <em>after the fact</em>. Buffer length
+  is in ⚙️ Settings.</li>
+  <li><strong>Control shortcuts</strong> — bind any key to app functions:
+  start/stop listening, quick record, time-shift capture, fade out all sounds.</li>
+  <li><strong>Cooldown bypass</strong> — by default a pressed shortcut fires
+  immediately, even mid-cooldown, and <em>chokes</em> whatever was playing.
+  Voice triggers always respect cooldowns. Toggle in ⚙️ Settings → Trigger Shortcuts.</li>
+  <li><strong>Levelling &amp; trim</strong> — every sound is measured once and loud
+  ones are turned down so nothing blasts anyone. Each sound has a ±12&nbsp;dB trim
+  slider and an auto-reset.</li>
+  <li><strong>Output routing</strong> — pick which output device sounds play to,
+  per your setup. A virtual audio cable is how you feed soundboard audio into a stream.</li>
+  <li><strong>Full mode</strong> — <code>pip install -r requirements.txt</code>
+  (big download: torch + Whisper) and the same <code>start-triggerword.bat</code>
+  upgrades itself: offline Whisper speech recognition, <strong>global hotkeys</strong>
+  <kbd>F13</kbd>–<kbd>F24</kbd> that fire triggers with the window unfocused
+  (macro pads, stream decks, BLE remotes), everything running hidden, and closing
+  the TriggerWord window shuts the whole thing down.</li>
+</ul>
 
 <h2>If something's wrong</h2>
 <ul>

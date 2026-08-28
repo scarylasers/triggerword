@@ -2,10 +2,19 @@
 /* Grid layout styles */
         .soundboard-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 4fr));
+            grid-template-columns: repeat(5, 1fr);
             gap: 16px;
             margin-top: 16px;
             padding: 16px;
+        }
+        @media (max-width: 1200px) {
+            .soundboard-grid { grid-template-columns: repeat(4, 1fr); }
+        }
+        @media (max-width: 950px) {
+            .soundboard-grid { grid-template-columns: repeat(3, 1fr); }
+        }
+        @media (max-width: 700px) {
+            .soundboard-grid { grid-template-columns: repeat(2, 1fr); }
         }
         
         .soundboard-card {
