@@ -177,7 +177,7 @@
     <div id="globalSettingsModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:2000;align-items:center;justify-content:center;">
         <div id="globalSettingsContent" style="background:white;padding:20px;border-radius:8px;width:90%;max-width:600px;max-height:80%;overflow-y:auto;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
-                <h3>⚙️ Global Settings</h3>
+                <h3>⚙️ Global Settings <span id="appVersionLabel" style="font-size:0.65em;color:#999;font-weight:normal;"></span></h3>
                 <div style="display:flex;gap:8px;align-items:center;">
                     <a href="/guide.html" target="_blank" style="background:#ffcc00;color:#222;padding:5px 12px;border-radius:4px;text-decoration:none;font-weight:600;">❓ User Guide</a>
                     <button id="closeGlobalSettings" style="background:#ccc;padding:5px 10px;border:none;border-radius:4px;cursor:pointer;">✕</button>
@@ -1315,6 +1315,8 @@
         let selectedDeviceId = null;
         let selectedOutputDeviceId = null;
         let isMicMuted = false;
+        const APP_VERSION = '1.0.0'; // keep in sync with package.json (see CHANGELOG.md)
+
         let masterVolume = 0.75; // Default 75%
         
         // Live search state
@@ -9733,6 +9735,11 @@
         // Action Menu Button (in sticky header)
         document.getElementById('actionMenuBtn')?.addEventListener('click', toggleActionButtons);
         
+        // Version stamp (single source: APP_VERSION above)
+        const versionLabel = document.getElementById('appVersionLabel');
+        if (versionLabel) versionLabel.textContent = `v${APP_VERSION}`;
+        console.log(`TriggerWord v${APP_VERSION}`);
+
         // Fade-out-all button
         document.getElementById('stopAllBtn')?.addEventListener('click', () => fadeOutAllSamples());
 
