@@ -57,7 +57,11 @@ You need **Google Chrome or Microsoft Edge**. Nothing else installs.
 The full manual lives in **[guide.html](guide.html)** — also reachable from the
 ⚙️ settings inside the app (❓ User Guide).
 
-To stop it: close the black window.
+To stop it: close the TriggerWord window.
+
+**To update later:** double-click `update-triggerword.bat` — it fetches the
+latest version and replaces the app files. Your sounds and settings live in
+your browser, not this folder, so updates never touch them.
 
 > **No Python?** Install it from [python.org](https://www.python.org/downloads/)
 > and tick **"Add Python to PATH"** during setup. Nothing else is needed — the

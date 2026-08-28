@@ -9740,6 +9740,42 @@
         if (versionLabel) versionLabel.textContent = `v${APP_VERSION}`;
         console.log(`TriggerWord v${APP_VERSION}`);
 
+        // Update check: at most once a day, ask GitHub for the latest release
+        // and offer update-triggerword.bat if it's newer. Fails silently
+        // offline; a dismissed version stays dismissed.
+        (function checkForUpdates() {
+            try {
+                const last = Number(localStorage.getItem('twUpdateCheckAt') || 0);
+                if (Date.now() - last < 20 * 60 * 60 * 1000) return;
+                localStorage.setItem('twUpdateCheckAt', String(Date.now()));
+            } catch (e) { return; }
+            function isNewer(a, b) {
+                const pa = a.split('.').map(Number), pb = b.split('.').map(Number);
+                for (let i = 0; i < 3; i++) {
+                    if ((pa[i] || 0) > (pb[i] || 0)) return true;
+                    if ((pa[i] || 0) < (pb[i] || 0)) return false;
+                }
+                return false;
+            }
+            fetch('https://api.github.com/repos/scarylasers/triggerword/releases/latest')
+                .then(r => r.ok ? r.json() : null)
+                .then(rel => {
+                    if (!rel || !rel.tag_name) return;
+                    const latest = rel.tag_name.replace(/^v/, '');
+                    if (!isNewer(latest, APP_VERSION)) return;
+                    if (localStorage.getItem('twUpdateDismissed') === latest) return;
+                    const bar = document.createElement('div');
+                    bar.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:2147482000;background:#222;color:#fff;padding:12px 16px;border-radius:8px;border:2px solid #ffcc00;box-shadow:0 4px 16px rgba(0,0,0,.4);font-size:14px;max-width:330px;line-height:1.5;';
+                    bar.innerHTML = `🆕 <b>TriggerWord v${latest}</b> is out! Run <b>update-triggerword.bat</b> in the app folder, or <a href="${rel.html_url}" target="_blank" style="color:#ffcc00">see what's new</a>. <button style="margin-left:8px;background:#444;color:#fff;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;">✕</button>`;
+                    bar.querySelector('button').addEventListener('click', () => {
+                        try { localStorage.setItem('twUpdateDismissed', latest); } catch (e) {}
+                        bar.remove();
+                    });
+                    document.body.appendChild(bar);
+                })
+                .catch(() => {});
+        })();
+
         // Fade-out-all button
         document.getElementById('stopAllBtn')?.addEventListener('click', () => fadeOutAllSamples());
 
