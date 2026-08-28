@@ -105,6 +105,43 @@
             background: #f0b95e;
         }
 
+        /* Tab bar above the trigger list */
+        .tab-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            padding: 6px 16px 0;
+        }
+        .tw-tab {
+            border: 2px solid #19bfae;
+            background: #ffffff;
+            color: #0b8f80;
+            border-radius: 999px;
+            padding: 5px 16px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.95em;
+        }
+        .tw-tab:hover { border-color: #0b8f80; }
+        .tw-tab.active {
+            background: #2ee8d0;
+            color: #123a36;
+            border-color: #0b8f80;
+        }
+        .tw-tab .tab-x { margin-left: 8px; opacity: 0.55; }
+        .tw-tab .tab-x:hover { opacity: 1; color: #c62828; }
+        .tab-card-btn {
+            position: absolute;
+            top: -12px;
+            right: -8px;
+            background: none;
+            border: none;
+            font-size: 1.15em;
+            cursor: pointer;
+            padding: 2px;
+        }
+
         /* Brand menu (logo dropdown in the header) */
         .brand-menu-link {
             display: block;
@@ -2817,7 +2854,7 @@
                 const nameKeyedGains = {};
 
                 for (const trigger of triggers) {
-                    const entry = { word: trigger.word, sounds: [] };
+                    const entry = { word: trigger.word, sounds: [], ...(trigger.tab ? { tab: trigger.tab } : {}) };
                     for (const sound of (trigger.sounds || [])) {
                         let zipName = sound.name;
                         if (sound.blobKey) {
@@ -6775,9 +6812,80 @@
             triggerList.appendChild(grid);
         }
         
+        // ---- Tabs ----------------------------------------------------------
+        // Triggers can carry a `tab` name (persisted with the trigger, kept
+        // by exports/imports). Custom tab names also live in localStorage so
+        // an empty tab survives until it gets triggers.
+        let customTabs = [];
+        try { customTabs = JSON.parse(localStorage.getItem('twCustomTabs') || '[]'); } catch (e) {}
+        let currentTab = localStorage.getItem('twCurrentTab') || 'all';
+
+        function saveTabState() {
+            try {
+                localStorage.setItem('twCustomTabs', JSON.stringify(customTabs));
+                localStorage.setItem('twCurrentTab', currentTab);
+            } catch (e) {}
+        }
+
+        function allTabNames() {
+            const inUse = triggers.map(t => t.tab).filter(Boolean);
+            return [...new Set([...customTabs, ...inUse])];
+        }
+
+        function switchTab(name) {
+            currentTab = name;
+            saveTabState();
+            renderTriggerList();
+        }
+
+        let openTabMenuEl = null;
+        function closeTabMenu() {
+            if (openTabMenuEl) { openTabMenuEl.remove(); openTabMenuEl = null; }
+        }
+        document.addEventListener('click', closeTabMenu);
+
+        function openTabMenu(anchor, groupArr) {
+            closeTabMenu();
+            const menu = document.createElement('div');
+            menu.style.cssText = 'position:fixed;background:#1d2b33;color:#e8f1f5;border:2px solid #ffcc00;border-radius:8px;padding:4px 0;min-width:150px;z-index:99999;box-shadow:0 6px 20px rgba(0,0,0,0.35);font-size:0.9em;';
+            const current = groupArr[0].trigger.tab || null;
+            function addItem(label, value) {
+                const it = document.createElement('div');
+                it.textContent = label + (value === current ? '  ✓' : '');
+                it.style.cssText = 'padding:6px 14px;cursor:pointer;white-space:nowrap;';
+                it.onmouseenter = () => it.style.background = '#2a3b46';
+                it.onmouseleave = () => it.style.background = '';
+                it.onclick = (e) => {
+                    e.stopPropagation();
+                    closeTabMenu();
+                    let v = value;
+                    if (v === '__new__') {
+                        v = (prompt('Name the new tab:') || '').trim();
+                        if (!v) return;
+                        if (!customTabs.includes(v)) customTabs.push(v);
+                    }
+                    groupArr.forEach(({ trigger }) => {
+                        if (v) trigger.tab = v; else delete trigger.tab;
+                    });
+                    saveTriggersToStorage();
+                    saveTabState();
+                    renderTriggerList();
+                };
+                menu.appendChild(it);
+            }
+            addItem('No tab', null);
+            allTabNames().forEach(n => addItem(`🗂️ ${n}`, n));
+            addItem('➕ New tab…', '__new__');
+            document.body.appendChild(menu);
+            const r = anchor.getBoundingClientRect();
+            menu.style.top = (r.bottom + 4) + 'px';
+            menu.style.left = Math.max(8, r.right - 160) + 'px';
+            openTabMenuEl = menu;
+        }
+
         function renderTriggerList() {
             triggerList.innerHTML = '';
-            
+
             if (triggers.length === 0) {
                 triggerList.innerHTML = '<p>No triggers added yet. Add some above!</p>';
                 return;
@@ -6802,7 +6910,7 @@
             Object.values(groups).forEach(groupArr => {
                 const { trigger } = groupArr[0];
                 const isQuickRecording = trigger.word.startsWith('Quick Recording #') || trigger.word.startsWith('Time-Shift Recording #');
-                
+
                 if (isFavorite(trigger.word)) {
                     favoriteGroups.push(groupArr);
                 } else if (isQuickRecording) {
@@ -6811,9 +6919,90 @@
                     regularGroups.push(groupArr);
                 }
             });
-            
+
+            // A deleted/renamed custom tab falls back to All
+            const reserved = ['all', 'favorites', 'recordings'];
+            if (!reserved.includes(currentTab) && !allTabNames().includes(currentTab)) {
+                currentTab = 'all';
+                saveTabState();
+            }
+
+            // ---- Tab bar ----
+            const tabBar = document.createElement('div');
+            tabBar.className = 'tab-bar';
+            const addTabChip = (label, id, deletable) => {
+                const chip = document.createElement('button');
+                chip.className = 'tw-tab' + (currentTab === id ? ' active' : '');
+                chip.textContent = label;
+                if (deletable && currentTab === id) {
+                    const x = document.createElement('span');
+                    x.className = 'tab-x';
+                    x.textContent = '✕';
+                    x.title = 'Delete this tab (its triggers stay in All)';
+                    x.onclick = (e) => {
+                        e.stopPropagation();
+                        if (!confirm(`Delete tab "${id}"? Its triggers stay in All Triggers.`)) return;
+                        customTabs = customTabs.filter(t => t !== id);
+                        triggers.forEach(t => { if (t.tab === id) delete t.tab; });
+                        saveTriggersToStorage();
+                        switchTab('all');
+                    };
+                    chip.appendChild(x);
+                }
+                chip.onclick = () => switchTab(id);
+                tabBar.appendChild(chip);
+            };
+            addTabChip('🗂️ All', 'all', false);
+            addTabChip('⭐ Favorites', 'favorites', false);
+            if (quickRecordingGroups.length > 0 || currentTab === 'recordings') {
+                addTabChip('🎙️ Recordings', 'recordings', false);
+            }
+            allTabNames().forEach(name => addTabChip(name, name, true));
+            const newTabBtn = document.createElement('button');
+            newTabBtn.className = 'tw-tab';
+            newTabBtn.textContent = '➕';
+            newTabBtn.title = 'New tab';
+            newTabBtn.onclick = () => {
+                const name = (prompt('Name the new tab:') || '').trim();
+                if (!name) return;
+                if (reserved.includes(name.toLowerCase()) || allTabNames().includes(name)) {
+                    alert('That tab already exists.');
+                    return;
+                }
+                customTabs.push(name);
+                switchTab(name);
+            };
+            tabBar.appendChild(newTabBtn);
+            triggerList.appendChild(tabBar);
+
+            // ---- Custom tab view: one grid of that tab's triggers ----
+            if (!reserved.includes(currentTab)) {
+                const tabGroups = Object.values(groups).filter(g => g[0].trigger.tab === currentTab);
+                if (tabGroups.length === 0) {
+                    const empty = document.createElement('p');
+                    empty.style.padding = '24px 16px';
+                    empty.textContent = 'Nothing in this tab yet — use the 🗂️ button on any card to move triggers here.';
+                    triggerList.appendChild(empty);
+                } else {
+                    const tabGrid = document.createElement('div');
+                    tabGrid.className = 'soundboard-grid';
+                    tabGroups.forEach(groupArr => {
+                        tabGrid.appendChild(createSoundboardCard(groupArr, isFavorite(groupArr[0].trigger.word)));
+                    });
+                    triggerList.appendChild(tabGrid);
+                }
+                return;
+            }
+
+            if (currentTab === 'favorites' && favoriteGroups.length === 0) {
+                const empty = document.createElement('p');
+                empty.style.padding = '24px 16px';
+                empty.textContent = 'No favorites yet — click the ♡ on any card.';
+                triggerList.appendChild(empty);
+            }
+
             // Create favorites section if there are any favorites
-            if (favoriteGroups.length > 0) {
+            if ((currentTab === 'all' || currentTab === 'favorites') && favoriteGroups.length > 0) {
                 const favoritesTitle = document.createElement('h3');
                 favoritesTitle.textContent = '⭐ Favorites';
                 favoritesTitle.style.color = '#ff6b35';
@@ -6839,7 +7028,7 @@
             }
             
             // Create quick recordings section if there are any
-            if (quickRecordingGroups.length > 0) {
+            if ((currentTab === 'all' || currentTab === 'recordings') && quickRecordingGroups.length > 0) {
                 const quickRecordingsTitle = document.createElement('h3');
                 quickRecordingsTitle.textContent = '🎙️ Quick & Time-Shift Recordings';
                 quickRecordingsTitle.style.color = '#e91e63';
@@ -6874,7 +7063,7 @@
             }
             
             // Create regular triggers section
-            if (regularGroups.length > 0) {
+            if (currentTab === 'all' && regularGroups.length > 0) {
                 if (favoriteGroups.length > 0 || quickRecordingGroups.length > 0) {
                     const regularTitle = document.createElement('h3');
                     regularTitle.textContent = '🎵 All Triggers';
@@ -6950,7 +7139,18 @@
                 });
             };
             card.appendChild(editBtn);
-                
+
+            // Tab assignment button (top-right corner)
+            const tabBtn = document.createElement('button');
+            tabBtn.className = 'tab-card-btn';
+            tabBtn.innerHTML = '🗂️';
+            tabBtn.title = trigger.tab ? `Tab: ${trigger.tab}` : 'Assign to a tab';
+            tabBtn.onclick = function(e) {
+                e.stopPropagation();
+                openTabMenu(tabBtn, groupArr);
+            };
+            card.appendChild(tabBtn);
+
                 // Word chips container - display only, no editing
                 const wordCell = document.createElement('div');
                 wordCell.style.display = 'flex';
@@ -8013,6 +8213,7 @@
                     const triggerData = {
                         word: trigger.word,
                         cooldown: trigger.cooldown,
+                        ...(trigger.tab ? { tab: trigger.tab } : {}),
                         sounds: []
                     };
                     
@@ -8053,6 +8254,7 @@
                 const manifest = exportData.map(t => ({
                     word: t.word,
                     cooldown: t.cooldown,
+                    ...(t.tab ? { tab: t.tab } : {}),
                     sounds: t.sounds.map(s => ({ name: `audio/${s.fileName}` }))
                 }));
                 
