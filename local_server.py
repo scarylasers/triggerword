@@ -58,6 +58,11 @@ async def serve_manifest():
 async def serve_guide():
     return FileResponse("guide.html", headers=NO_CACHE)
 
+# Voicemeeter routing guide
+@app.get("/routing.html")
+async def serve_routing():
+    return FileResponse("routing.html", headers=NO_CACHE)
+
 # Serve static files from the static directory
 static_dir = Path(__file__).parent / "static"
 if static_dir.exists():
