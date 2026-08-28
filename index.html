@@ -62,12 +62,26 @@
         html.dark-theme div:has(> img.card-logo) {
             z-index: 2147483001 !important;
         }
+        /* While any modal or the import/export menu is open, cancel the
+           lifts so true-color art never paints over it (the lift puts art
+           above the dark overlay, which sits above the modals). */
+        html.dark-theme:has(div[id*="Modal"][style*="flex"]) img,
+        html.dark-theme:has(div[id*="Modal"][style*="flex"]) .favorite-btn,
+        html.dark-theme:has(div[id*="Modal"][style*="flex"]) div:has(> img.card-logo),
+        html.dark-theme:has(.action-buttons[style*="flex"]) img,
+        html.dark-theme:has(.action-buttons[style*="flex"]) .favorite-btn,
+        html.dark-theme:has(.action-buttons[style*="flex"]) div:has(> img.card-logo) {
+            z-index: auto !important;
+        }
 
         /* The header is lifted above the overlay so its emoji buttons keep
            their true colors, then darkened deliberately: warm near-black
            surfaces with gold buttons (per the design call: gold, not green). */
         html.dark-theme .sticky-header {
-            z-index: 2147483001;
+            /* One above the art lift: the header (with its search bar,
+               suggestions and transcription) always paints over card art
+               scrolling underneath it. */
+            z-index: 2147483002;
             background: linear-gradient(181deg, #2c241a 0%, #171310 100%);
         }
         html.dark-theme .sticky-header .compact-select,
