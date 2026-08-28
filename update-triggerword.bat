@@ -25,7 +25,7 @@ rmdir /s /q "%TMPD%" 2>nul
 mkdir "%TMPD%"
 
 echo   Downloading the latest version...
-curl -sL -o "%TMPD%\tw.zip" https://github.com/scarylasers/triggerword/archive/refs/heads/master.zip
+curl -fsL -o "%TMPD%\tw.zip" https://github.com/scarylasers/triggerword/archive/refs/heads/master.zip
 if errorlevel 1 goto :fail
 
 echo   Unpacking...
