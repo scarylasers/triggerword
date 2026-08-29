@@ -92,9 +92,20 @@ Anything else, bring it to the [Hopzle Discord](https://discord.gg/r4z4EVnt9U).
 
 ## Your privacy
 
-Everything happens on your computer. There is no account, no server and no telemetry, and
-your audio never leaves the machine. The app checks GitHub about once a day to see whether
-a newer version exists; if you're offline it carries on quietly.
+**TriggerWord sends nothing anywhere.** No account, no sign-in, no telemetry, no server of
+its own. Your sounds, triggers and settings live in your browser on this machine and are
+never uploaded. The only thing the app itself contacts is GitHub, about once a day, to see
+whether a newer version exists — if you're offline it carries on quietly.
+
+**One honest exception, and it isn't ours: speech recognition is Chrome's.** When you press
+play, Chrome does the listening, and unless it has on-device speech models installed it
+sends that microphone audio to Google to be turned into text — the same as any website
+using this feature. TriggerWord never receives or stores that audio, and the words are
+matched against your triggers here on your machine, but the recognition itself is Google's
+service.
+
+If that matters to you, `chrome://components` shows whether the on-device *Speech
+Recognition* models are installed; with them, Chrome can transcribe locally.
 
 ## Running it from source
 

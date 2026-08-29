@@ -131,6 +131,23 @@
         }
         .tw-tab .tab-x { margin-left: 8px; opacity: 0.55; }
         .tw-tab .tab-x:hover { opacity: 1; color: #c62828; }
+        /* A live indicator beside the transcript. A word alone does not read
+           as "working" at a glance - a pulse does. */
+        .compact-status.transcribing::before {
+            content: '';
+            display: inline-block;
+            width: 9px; height: 9px;
+            margin-right: 7px;
+            border-radius: 50%;
+            background: #ff2f4d;
+            animation: recPulse 1.2s ease-in-out infinite;
+            vertical-align: middle;
+        }
+        @keyframes recPulse {
+            0%, 100% { opacity: 1;   box-shadow: 0 0 0 0 rgba(255, 47, 77, 0.65); }
+            50%      { opacity: .45; box-shadow: 0 0 0 6px rgba(255, 47, 77, 0); }
+        }
+
         /* The start button while nothing is listening. The app used to sit
            there saying "Ready", which reads as already running. */
         .control-btn.needs-press {
@@ -250,11 +267,14 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
                 <input type="range" id="volumeControlSticky" min="0" max="100" value="75" class="compact-slider">
                 <span id="volumeDisplaySticky" class="volume-text">75%</span>
             </div>
-            <div class="playback-controls">
-                <button id="startBtnSticky" class="control-btn start-btn">▶️</button>
+            <!-- Play and stop live next to the transcript now, where you look
+                 to see whether it is hearing you. Pause and resume stay in the
+                 DOM because control shortcuts and syncButtonStates use them,
+                 but they are not shown: stop and start say the same thing with
+                 one less state to reason about. -->
+            <div class="playback-controls" style="display:none;">
                 <button id="pauseBtnSticky" class="control-btn pause-btn" disabled>⏸️</button>
                 <button id="resumeBtnSticky" class="control-btn resume-btn" disabled style="display:none;">▶️</button>
-                <button id="stopBtnSticky" class="control-btn stop-btn" disabled>⏹️</button>
             </div>
         <div class="file-controls">
             <button id="importZipBtnSticky" class="control-btn file-btn" title="Import ZIP Soundpack">📥</button>
@@ -272,6 +292,9 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
         
         <!-- Status and Transcript Row -->
         <div class="sticky-bottom-row">
+            <button id="startBtnSticky" class="control-btn start-btn" title="Listen for triggers">▶️</button>
+            <button id="stopBtnSticky" class="control-btn stop-btn" title="Stop listening" disabled>⏹️</button>
+            <button id="micSetupBtn" class="control-btn file-btn" title="Choose which microphone Chrome listens to">🎤</button>
             <div id="statusSticky" class="compact-status">⏸ Not listening — press ▶ to start</div>
             <div id="compactTranscript" class="compact-transcript">
                 <div class="transcript-line">Speak to see transcription...</div>
@@ -3510,7 +3533,7 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
             recognition.onstart = () => {
                 recognitionStartTime = Date.now();
                 console.log('🎤 Fallback speech recognition started at:', new Date().toLocaleTimeString());
-                updateStatus('Listening', 'success');
+                updateStatus('🎙️ Transcribing — say a trigger word', 'success');
                 
                 // Clear any pending restart timeout
                 if (restartTimeout) {
@@ -5262,7 +5285,7 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
                     audioMeterContainer.style.display = 'flex';
                 }
                 
-                updateStatus('Listening', 'success');
+                updateStatus('🎙️ Transcribing — say a trigger word', 'success');
                 pcmBuffer = [];
                 chunkInterval = setInterval(sendPcmChunk, RECORD_SECONDS * 1000);
                 
@@ -6642,7 +6665,7 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
                 pauseBtn.style.display = 'inline-block';
                 pauseBtn.disabled = false;
                 resumeBtn.style.display = 'none';
-                updateStatus('Listening', 'success');
+                updateStatus('🎙️ Transcribing — say a trigger word', 'success');
                 console.log('🔊 Listening resumed');
             }
         }
@@ -8749,7 +8772,7 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
                             } else {
                                 updateStatus('⚠️ No recognition service available', 'error');
                             }
-                            updateStatus('🎤 Started listening', 'success');
+                            updateStatus('🎙️ Transcribing — say a trigger word', 'success');
                         } else if (isPaused) {
                             // Resume if paused
                             if (isConnected) {
@@ -8757,7 +8780,7 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
                             } else if (useFallback && recognition) {
                                 resumeFallbackRecognition();
                             }
-                            updateStatus('▶️ Listening resumed', 'success');
+                            updateStatus('🎙️ Transcribing — say a trigger word', 'success');
                         } else {
                             // Pause if currently listening
                             if (isConnected) {
@@ -8830,7 +8853,7 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
                     } else {
                         updateStatus('⚠️ No recognition service available', 'error');
                     }
-                    updateStatus('🎤 Started listening (Space to pause, Esc to stop)', 'success');
+                    updateStatus('🎙️ Transcribing — say a trigger word', 'success');
                 } else if (isPaused) {
                     // Resume if paused
                     if (isConnected) {
@@ -8838,7 +8861,7 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
                     } else if (useFallback && recognition) {
                         resumeFallbackRecognition();
                     }
-                    updateStatus('▶️ Listening resumed (Space to pause, Esc to stop)', 'success');
+                    updateStatus('🎙️ Transcribing — say a trigger word', 'success');
                 } else {
                     // Pause if currently listening
                     if (isConnected) {
@@ -9923,6 +9946,8 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
         function showIdlePromptIfNotListening() {
             const idle = !isListening && !isRecording;
             if (startBtnSticky) startBtnSticky.classList.toggle('needs-press', idle);
+            const statusEl = document.getElementById('statusSticky');
+            if (statusEl) statusEl.classList.toggle('transcribing', !idle && !isPaused);
             if (!idle) return;
             const status = document.getElementById('statusSticky');
             if (status) status.textContent = '⏸ Not listening — press ▶ to start';
@@ -10199,6 +10224,11 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
         // an --app window has no address bar. Opening the same origin as an
         // ordinary window gets one, and the choice is remembered per origin, so
         // it only has to be done once.
+        document.getElementById('micSetupBtn')?.addEventListener('click', () => {
+            window.open(location.origin + '/?micsetup=1', '_blank');
+            updateStatus('Opened a tab — press ▶ there, then click the 🎤 in the address bar', 'info');
+        });
+
         document.getElementById('openMicPickerBtn')?.addEventListener('click', () => {
             window.open(location.origin + '/?micsetup=1', '_blank');
             updateStatus('Opened a tab — press Listen there, then click the 🎤 in the address bar', 'info');
