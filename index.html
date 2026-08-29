@@ -131,17 +131,6 @@
         }
         .tw-tab .tab-x { margin-left: 8px; opacity: 0.55; }
         .tw-tab .tab-x:hover { opacity: 1; color: #c62828; }
-        .tab-card-btn {
-            position: absolute;
-            top: -12px;
-            right: -8px;
-            background: none;
-            border: none;
-            font-size: 1.15em;
-            cursor: pointer;
-            padding: 2px;
-        }
-
         /* Brand menu (logo dropdown in the header) */
         .brand-menu-link {
             display: block;
@@ -793,6 +782,52 @@
                 const buttonRow = saveBtn.parentNode;
                 buttonRow.parentNode.insertBefore(shortcutSection, buttonRow);
             }
+
+            // Tab assignment lives here rather than on the card, so the card
+            // face stays clean.
+            let tabSection = document.getElementById('editModalTabSection');
+            if (!tabSection) {
+                tabSection = document.createElement('div');
+                tabSection.id = 'editModalTabSection';
+                tabSection.style.cssText = 'margin-top:12px;padding:10px;background:#f8f9fa;border-radius:6px;border:1px solid #dee2e6;';
+                tabSection.innerHTML = `
+                    <div style="font-weight:bold;margin-bottom:8px;color:#333;">🗂️ Tab</div>
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                        <select id="editModalTabSelect" style="padding:6px;border:1px solid #ccc;border-radius:4px;min-width:160px;"></select>
+                        <button type="button" id="editModalNewTabBtn" style="background:#ff9800;color:white;padding:6px 12px;border:none;border-radius:4px;cursor:pointer;">➕ New tab</button>
+                    </div>`;
+                const buttonRow = saveBtn.parentNode;
+                buttonRow.parentNode.insertBefore(tabSection, buttonRow);
+            }
+
+            const tabSelect = document.getElementById('editModalTabSelect');
+            function refreshTabOptions() {
+                const current = groupArr[0].trigger.tab || '';
+                tabSelect.innerHTML = '';
+                const none = document.createElement('option');
+                none.value = '';
+                none.textContent = 'No tab';
+                tabSelect.appendChild(none);
+                allTabNames().forEach(name => {
+                    const opt = document.createElement('option');
+                    opt.value = name;
+                    opt.textContent = name;
+                    tabSelect.appendChild(opt);
+                });
+                tabSelect.value = current;
+            }
+            refreshTabOptions();
+
+            // Applied on Save, along with the rest of the edits.
+            tabSelect.onchange = null;
+            document.getElementById('editModalNewTabBtn').onclick = () => {
+                const name = (prompt('Name the new tab:') || '').trim();
+                if (!name) return;
+                if (!customTabs.includes(name)) customTabs.push(name);
+                saveTabState();
+                refreshTabOptions();
+                tabSelect.value = name;
+            };
             
             // Initialize shortcut learning state for this modal
             let isModalLearning = false;
@@ -1360,7 +1395,14 @@
             saveBtn.onclick = function() {
                 const newAliases = aliasesInput.value.split(',').map(w => w.trim()).filter(Boolean);
                 const newCooldown = parseInt(cooldownInput.value, 10) || 10;
-                
+
+                // Tab applies to every trigger in the group, so aliases that
+                // share sounds stay on the same page
+                const chosenTab = tabSelect ? tabSelect.value : '';
+                groupArr.forEach(({ trigger: t }) => {
+                    if (chosenTab) t.tab = chosenTab; else delete t.tab;
+                });
+
                 if (isQuickRecording) {
                     // For quick recordings, preserve the "Quick Recording #" prefix unless explicitly moved
                     // Extract the number from the original name
@@ -4698,9 +4740,46 @@
             const a = src === undefined ? new NativeAudio() : new NativeAudio(src);
             activeAudios.add(a);
             a.addEventListener('ended', () => activeAudios.delete(a));
+            // Single voice: whatever starts last is what you hear. Hooking
+            // play() here is what makes the choke universal - handleTrigger is
+            // only one of eight places that start a sound, and the other seven
+            // (card clicks, favourites, rolling matches, recordings, previews)
+            // used to layer straight over whatever was already going. Two
+            // songs at once is never what you wanted.
+            const nativePlay = a.play.bind(a);
+            a.play = function () {
+                chokeOtherAudio(a);
+                return nativePlay();
+            };
             return a;
         };
         window.Audio.prototype = NativeAudio.prototype;
+
+        // Hand back the bookkeeping handleTrigger keeps for the sound it
+        // started: the card highlight, the fallback timer, and the mic and
+        // audio locks. Safe to call for any audio - it only acts on the one
+        // currently being tracked.
+        function releaseTriggerAudio(audio) {
+            if (!currentTriggerAudio || currentTriggerAudio.audio !== audio) return;
+            const cur = currentTriggerAudio;
+            currentTriggerAudio = null;
+            clearTimeout(cur.fallbackTimeout);
+            highlightTriggerCard(cur.word, false);
+            URL.revokeObjectURL(cur.url);
+            isPlayingSample = false;
+            isMicMuted = false;
+            isAudioLocked = false;
+        }
+
+        function chokeOtherAudio(except) {
+            for (const other of [...activeAudios]) {
+                if (other === except || other.paused || other.ended) continue;
+                try { other.pause(); } catch (e) {}
+                other.onended = null;
+                activeAudios.delete(other);
+                releaseTriggerAudio(other);
+            }
+        }
 
         function fadeOutAllSamples(fadeMs = 1200) {
             const playing = [...activeAudios].filter(a => !a.paused && !a.ended);
@@ -4718,16 +4797,7 @@
                         clearInterval(timer);
                         audio.pause();
                         activeAudios.delete(audio);
-                        if (currentTriggerAudio && currentTriggerAudio.audio === audio) {
-                            const cur = currentTriggerAudio;
-                            currentTriggerAudio = null;
-                            clearTimeout(cur.fallbackTimeout);
-                            highlightTriggerCard(cur.word, false);
-                            URL.revokeObjectURL(cur.url);
-                            isPlayingSample = false;
-                            isMicMuted = false;
-                            isAudioLocked = false;
-                        }
+                        releaseTriggerAudio(audio);
                     } else {
                         audio.volume = startVol * (1 - k);
                     }
@@ -6167,6 +6237,11 @@
             
             // Store audio reference for cleanup
             trimmerAudio = audioPlayer;
+
+            // This is a real <audio> element rather than `new Audio`, so it
+            // misses the choke that every other playback path gets. Wire it up
+            // by hand: previewing a trim silences whatever else was running.
+            audioPlayer.onplay = () => chokeOtherAudio(audioPlayer);
         }
         
         function closeAudioTrimmerModal() {
@@ -6839,51 +6914,6 @@
             renderTriggerList();
         }
 
-        let openTabMenuEl = null;
-        function closeTabMenu() {
-            if (openTabMenuEl) { openTabMenuEl.remove(); openTabMenuEl = null; }
-        }
-        document.addEventListener('click', closeTabMenu);
-
-        function openTabMenu(anchor, groupArr) {
-            closeTabMenu();
-            const menu = document.createElement('div');
-            menu.style.cssText = 'position:fixed;background:#1d2b33;color:#e8f1f5;border:2px solid #ffcc00;border-radius:8px;padding:4px 0;min-width:150px;z-index:99999;box-shadow:0 6px 20px rgba(0,0,0,0.35);font-size:0.9em;';
-            const current = groupArr[0].trigger.tab || null;
-            function addItem(label, value) {
-                const it = document.createElement('div');
-                it.textContent = label + (value === current ? '  ✓' : '');
-                it.style.cssText = 'padding:6px 14px;cursor:pointer;white-space:nowrap;';
-                it.onmouseenter = () => it.style.background = '#2a3b46';
-                it.onmouseleave = () => it.style.background = '';
-                it.onclick = (e) => {
-                    e.stopPropagation();
-                    closeTabMenu();
-                    let v = value;
-                    if (v === '__new__') {
-                        v = (prompt('Name the new tab:') || '').trim();
-                        if (!v) return;
-                        if (!customTabs.includes(v)) customTabs.push(v);
-                    }
-                    groupArr.forEach(({ trigger }) => {
-                        if (v) trigger.tab = v; else delete trigger.tab;
-                    });
-                    saveTriggersToStorage();
-                    saveTabState();
-                    renderTriggerList();
-                };
-                menu.appendChild(it);
-            }
-            addItem('No tab', null);
-            allTabNames().forEach(n => addItem(`🗂️ ${n}`, n));
-            addItem('➕ New tab…', '__new__');
-            document.body.appendChild(menu);
-            const r = anchor.getBoundingClientRect();
-            menu.style.top = (r.bottom + 4) + 'px';
-            menu.style.left = Math.max(8, r.right - 160) + 'px';
-            openTabMenuEl = menu;
-        }
-
         function renderTriggerList() {
             triggerList.innerHTML = '';
 
@@ -7141,16 +7171,7 @@
             };
             card.appendChild(editBtn);
 
-            // Tab assignment button (top-right corner)
-            const tabBtn = document.createElement('button');
-            tabBtn.className = 'tab-card-btn';
-            tabBtn.innerHTML = '🗂️';
-            tabBtn.title = trigger.tab ? `Tab: ${trigger.tab}` : 'Assign to a tab';
-            tabBtn.onclick = function(e) {
-                e.stopPropagation();
-                openTabMenu(tabBtn, groupArr);
-            };
-            card.appendChild(tabBtn);
+            // Tab assignment lives in the edit (pencil) popout, not on the card
 
                 // Word chips container - display only, no editing
                 const wordCell = document.createElement('div');
