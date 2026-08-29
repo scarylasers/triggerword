@@ -5161,7 +5161,12 @@
                 // Only add deviceId constraint if we have a valid selected device
                 if (selectedDeviceId && selectedDeviceId !== '' && selectedDeviceId !== 'default') {
                     audioConstraints.audio = {
-                        deviceId: { ideal: selectedDeviceId },  // Use 'ideal' instead of 'exact' to be more flexible
+                        // 'exact', not 'ideal': with 'ideal' the browser is
+                        // free to hand back a different microphone, which is
+                        // exactly the "it ignores my dropdown" complaint. If
+                        // the device is genuinely gone the catch below falls
+                        // back to the default and says so.
+                        deviceId: { exact: selectedDeviceId },
                         echoCancellation: false,  // Disable echo cancellation for better audio quality
                         noiseSuppression: false,  // Disable noise suppression
                         autoGainControl: false    // Disable auto gain control
@@ -9402,17 +9407,50 @@
         
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', () => {
-            // Skip WebSocket and use browser speech recognition directly
-            console.log('🎤 Using browser speech recognition (WebSocket disabled)');
+            // Two ways to transcribe, and they differ in one way that matters:
+            //
+            //   Whisper server  - transcribes the stream THIS PAGE opens, so
+            //                     the microphone dropdown genuinely decides
+            //                     what is heard.
+            //   Chrome's own    - takes no device argument at all. It listens
+            //                     to whichever microphone Chrome picks, which
+            //                     the page cannot set. The dropdown can then
+            //                     disagree with what is actually heard.
+            //
+            // So prefer the server when it is running, and fall back to the
+            // browser otherwise. transcriptionMode drives the status text, so
+            // it is always clear which one is live.
             useFallback = true;
             if (initFallbackRecognition()) {
                 console.log('✅ Browser speech recognition initialized');
-                // Auto-start disabled - user must manually click "Listen for triggers"
-                // setTimeout(autoStartListening, 2000);
             } else {
                 console.warn('❌ Browser speech recognition not available');
                 updateStatus('Speech recognition not available in this browser', 'error');
             }
+
+            // Ask the server what it can do before assuming. The installed
+            // build is a plain file server, so there is no Whisper endpoint to
+            // connect to - trying anyway would show reconnection warnings for
+            // a feature that build does not have.
+            window.transcriptionMode = 'browser';
+            fetch('/capabilities')
+                .then(r => r.ok ? r.json() : null)
+                .then(caps => {
+                    if (!caps || !caps.whisper) {
+                        console.log('🎤 Chrome speech recognition - Chrome chooses the microphone, not the dropdown');
+                        return;
+                    }
+                    connectWebSocket();
+                    setTimeout(() => {
+                        if (isConnected) {
+                            useFallback = false;
+                            window.transcriptionMode = 'whisper';
+                            console.log('🎧 Whisper server - the microphone dropdown selects what is heard');
+                            updateStatus('Whisper connected — your selected microphone is used', 'success');
+                        }
+                    }, 2500);
+                })
+                .catch(() => {});
             
             // Audio Trimmer Modal event listeners
             document.getElementById('closeAudioTrimmerModal')?.addEventListener('click', closeAudioTrimmerModal);

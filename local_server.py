@@ -74,6 +74,14 @@ async def serve_guide():
 async def serve_routing():
     return FileResponse("routing.html", headers=NO_CACHE)
 
+# Lets the page discover what this server can do. The installed build runs a
+# plain file server with none of this, so the page must be able to ask rather
+# than assume - otherwise it tries to open a WebSocket that will never exist
+# and shows the user reconnection warnings for a feature they do not have.
+@app.get("/capabilities")
+async def capabilities():
+    return {"whisper": True, "hotkeys": True}
+
 # Serve static files from the static directory
 static_dir = Path(__file__).parent / "static"
 if static_dir.exists():
