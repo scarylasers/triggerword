@@ -40,7 +40,7 @@ included, is bundled.
 1. **Click Allow** when it asks for your microphone. Nothing works without it.
 2. **Import the starter pack** — ⚙️ Settings → *Import backup* → `TriggerWord-Starter-Pack.zip`,
    which ships with the app. You get SCARYLASERS sounds, songs and a few favourites.
-3. **Press Listen for triggers** and say **"lasers"**.
+3. **Press Listen for triggers** and say one of the words on the cards.
 4. **Add your own** with ➕: give a trigger one word or several, and attach as many sounds
    as you like — it picks one at random each time, which is what keeps a trigger funny.
 
