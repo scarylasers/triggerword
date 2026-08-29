@@ -9505,10 +9505,12 @@
         });
 
         // Event listeners
-        startBtn.addEventListener('click', () => {
+        startBtn.addEventListener('click', async () => {
             if (isConnected) {
                 startRecording();
             } else if (useFallback && recognition) {
+                // Promote the chosen mic before the recogniser binds its input
+                await applyInputDeviceChoice(selectedDeviceId, { restart: false });
                 startFallbackRecognition();
             } else {
                 updateStatus('Not connected to any recognition service', 'error');
@@ -9635,11 +9637,44 @@
             }
         }
 
+        // Make the microphone dropdown actually steer transcription.
+        //
+        // Chrome's speech recogniser takes no device argument. It listens to
+        // whichever microphone sits at the top of Chrome's own preference
+        // ranking, and the only thing that moves a device up that ranking is
+        // opening it. Saving the choice to localStorage - which is all this
+        // used to do - never touched that ranking, so the picker looked
+        // connected while the recogniser carried on listening to whatever had
+        // been opened in some earlier session.
+        //
+        // So: open the chosen device (which promotes it), then bounce the
+        // recogniser, since it binds its input when it starts. onend restarts
+        // it on its own.
+        async function applyInputDeviceChoice(deviceId, { restart = true } = {}) {
+            if (!deviceId) return;
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: { deviceId: { exact: deviceId } }
+                });
+                stream.getTracks().forEach(t => t.stop());
+            } catch (err) {
+                console.warn('🎤 Could not open the selected microphone:', err);
+                updateStatus('Could not open that microphone - is it in use?', 'warning');
+                return;
+            }
+            if (restart && useFallback && recognition && isListening && !isPaused) {
+                updateStatus('🎤 Switching microphone…', 'info');
+                try { recognition.stop(); } catch (e) {}
+            }
+        }
+
         // Device selection change handlers
         audioSourceSelect.addEventListener('change', () => {
             selectedDeviceId = audioSourceSelect.value;
             localStorage.setItem('selectedInputDevice', selectedDeviceId);
+            if (audioSourceSticky) audioSourceSticky.value = selectedDeviceId;
             console.log('🎤 Input device changed to:', audioSourceSelect.options[audioSourceSelect.selectedIndex].text);
+            applyInputDeviceChoice(selectedDeviceId);
         });
         
         audioOutputSelect.addEventListener('change', () => {
@@ -9662,6 +9697,7 @@
             localStorage.setItem('selectedInputDevice', selectedDeviceId);
             audioSourceSelect.value = selectedDeviceId; // Sync main control
             console.log('🎤 Sticky input device changed to:', audioSourceSticky.options[audioSourceSticky.selectedIndex].text);
+            applyInputDeviceChoice(selectedDeviceId);
         });
         
         audioOutputSticky.addEventListener('change', () => {
@@ -9682,10 +9718,12 @@
         });
         
         // Sticky button event handlers
-        startBtnSticky.addEventListener('click', () => {
+        startBtnSticky.addEventListener('click', async () => {
             if (isConnected) {
                 startRecording();
             } else if (useFallback && recognition) {
+                // Promote the chosen mic before the recogniser binds its input
+                await applyInputDeviceChoice(selectedDeviceId, { restart: false });
                 startFallbackRecognition();
             } else {
                 updateStatus('Not connected to any recognition service', 'error');
