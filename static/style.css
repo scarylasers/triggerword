@@ -2,19 +2,10 @@
 /* Grid layout styles */
         .soundboard-grid {
             display: grid;
-            grid-template-columns: repeat(5, 1fr);
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
             gap: 10px;
             margin-top: 4px;
             padding: 6px 10px;
-        }
-        @media (max-width: 1200px) {
-            .soundboard-grid { grid-template-columns: repeat(4, 1fr); }
-        }
-        @media (max-width: 950px) {
-            .soundboard-grid { grid-template-columns: repeat(3, 1fr); }
-        }
-        @media (max-width: 700px) {
-            .soundboard-grid { grid-template-columns: repeat(2, 1fr); }
         }
         
         .soundboard-card {
@@ -135,8 +126,8 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
+            max-width: none;
+            margin: 0;
             padding: 4px;
             /* Set from JS to the header's real height, so folding the header
                moves the board up with it instead of leaving a gap. */
@@ -147,9 +138,7 @@
         
         /* Logo styling */
         .logo-container {
-            text-align: center;
-            margin-bottom: 30px;
-            padding: 10px;
+            display: none;  /* the logo lives in the header now */
         }
         
         .app-logo {

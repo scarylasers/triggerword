@@ -108,6 +108,7 @@
         /* Tab bar above the trigger list */
         .tab-bar {
             display: flex;
+            margin-top: 0;
             flex-wrap: wrap;
             gap: 6px;
             align-items: center;
@@ -119,7 +120,10 @@
             padding-bottom: 3px !important;
             font-size: 1.05em !important;
         }
-        .soundboard-grid { margin-top: 4px !important; padding: 6px 10px !important; }
+        .soundboard-grid {
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important;
+            margin-top: 4px !important; padding: 6px 10px !important;
+        }
         .tw-section-title { margin: 6px 0 2px !important; }
 
         /* A thin strip at the bottom edge of the header holding the fold
