@@ -323,10 +323,17 @@
                     </button>
                 </div>
                 <div style="margin-top:8px;font-size:0.95em;">
-                    In that tab, press <strong>Listen for triggers</strong>, then click the
-                    <strong>🎤 icon that appears in the address bar</strong> and pick your
-                    microphone from the dropdown. Chrome remembers it for this address, so
-                    this window uses it from then on.
+                    <strong>The order matters</strong> — Chrome only offers the device list
+                    while the microphone is actually live:
+                    <ol style="margin:6px 0 0 20px;padding:0;">
+                        <li>In the new tab, press <strong>Listen for triggers</strong> and
+                        leave it listening.</li>
+                        <li><em>Then</em> click the <strong>🎤 icon in the address bar</strong>.</li>
+                        <li>Pick your microphone from the dropdown that appears.</li>
+                    </ol>
+                    Chrome remembers it for this address, so this window uses it from then on.
+                    Click the icon before pressing Listen and you'll only get the permission
+                    panel, with no device list.
                 </div>
             </div>
             
@@ -10387,6 +10394,7 @@
             }
             hotkeySocket.onopen = () => {
                 retryMs = 2000;
+                connectHotkeySocket.everConnected = true;
                 console.log('🎛️ Global hotkey bridge connected');
             };
             hotkeySocket.onmessage = (event) => {
@@ -10404,6 +10412,12 @@
                 }));
             };
             hotkeySocket.onclose = () => {
+                // Only the full server has this endpoint. On the normal build
+                // it will never appear, so retrying forever just fills the
+                // console with 404s that look like something is broken. Give
+                // it a couple of tries in case the server is still starting,
+                // then stop.
+                if (!connectHotkeySocket.everConnected && retryMs > 8000) return;
                 setTimeout(() => connectHotkeySocket(Math.min(retryMs * 2, 60000)), retryMs);
             };
         })();
