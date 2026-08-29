@@ -133,20 +133,31 @@
         .tw-tab .tab-x:hover { opacity: 1; color: #c62828; }
         /* A live indicator beside the transcript. A word alone does not read
            as "working" at a glance - a pulse does. */
-        .compact-status.transcribing::before {
-            content: '';
-            display: inline-block;
-            width: 9px; height: 9px;
-            margin-right: 7px;
-            border-radius: 50%;
-            background: #ff2f4d;
-            animation: recPulse 1.2s ease-in-out infinite;
-            vertical-align: middle;
+        .compact-status.transcribing {
+            background: rgba(46, 232, 208, 0.28);
+            font-weight: 600;
         }
-        @keyframes recPulse {
-            0%, 100% { opacity: 1;   box-shadow: 0 0 0 0 rgba(255, 47, 77, 0.65); }
-            50%      { opacity: .45; box-shadow: 0 0 0 6px rgba(255, 47, 77, 0); }
+
+        /* Transport sits as one tight cluster next to the transcript. */
+        .transport-group {
+            display: flex;
+            gap: 2px;
+            flex: 0 0 auto;
+            align-items: center;
         }
+        .transport-group .control-btn { padding: 2px 7px; }
+
+        /* Keep the icon row at its natural width instead of stretching across
+           the header, which is what made it sprawl. */
+        .file-controls { flex: 0 0 auto !important; }
+        .sticky-controls-row { flex-wrap: nowrap; align-items: center; gap: 8px; }
+        .device-controls { flex: 0 1 auto !important; min-width: 0; }
+        .compact-select { max-width: 150px; }
+
+        /* Everything except the logo, transport and transcript can fold away. */
+        .sticky-header.collapsed .sticky-controls-row { display: none; }
+        #collapseHeaderBtn { transition: transform .15s ease; }
+        .sticky-header.collapsed #collapseHeaderBtn { transform: rotate(180deg); }
 
         /* The start button while nothing is listening. The app used to sit
            there saying "Ready", which reads as already running. */
@@ -240,24 +251,6 @@
     <div id="stickyHeader" class="sticky-header">
         <!-- Main Controls Row -->
         <div class="sticky-controls-row">
-            <div id="brandMenu" style="position:relative;flex:0 0 auto;margin-right:8px;align-self:center;">
-                <img id="brandMenuBtn" src="static/images/Triggerword_logo_medium.png" alt="TriggerWord" title="TriggerWord — links &amp; support" style="height:52px;width:auto;cursor:pointer;display:block;filter:drop-shadow(0 1px 4px rgba(0,0,0,0.35));">
-                <div id="brandMenuDropdown" style="display:none;position:absolute;top:58px;left:0;background:#1d2b33;border:2px solid #ffcc00;border-radius:10px;padding:6px 0;min-width:215px;z-index:99999;box-shadow:0 8px 26px rgba(0,0,0,0.4);">
-                    <a href="https://discord.gg/r4z4EVnt9U" target="_blank" class="brand-menu-link">💬 Hopzle Discord — get help</a>
-                    <a href="https://ko-fi.com/scarylasers_" target="_blank" class="brand-menu-link" style="color:#ff2fd0;">☕ Tip on Ko-fi</a>
-                    <a href="/guide.html" target="_blank" class="brand-menu-link">❓ User Guide</a>
-                    <a href="/routing.html" target="_blank" class="brand-menu-link">🎚️ Audio Routing Guide</a>
-                    <div style="border-top:1px solid #34454f;margin:5px 0;"></div>
-                    <a href="https://www.youtube.com/@ScaryLasers" target="_blank" class="brand-menu-link">▶️ YouTube</a>
-                    <a href="https://www.twitch.tv/scarylasers" target="_blank" class="brand-menu-link">🎮 Twitch</a>
-                    <a href="https://www.tiktok.com/@scarylasers" target="_blank" class="brand-menu-link">🎵 TikTok</a>
-                    <a href="https://www.instagram.com/scarylasers_" target="_blank" class="brand-menu-link">📷 Instagram</a>
-                    <a href="https://x.com/ScaryLasers" target="_blank" class="brand-menu-link">✖️ X</a>
-                    <div style="border-top:1px solid #34454f;margin:5px 0;"></div>
-                    <a href="https://hopzle.com" target="_blank" class="brand-menu-link">🧰 Hopzle Toolkit</a>
-                    <a href="https://github.com/scarylasers/triggerword" target="_blank" class="brand-menu-link">🐙 GitHub</a>
-                </div>
-            </div>
             <div class="device-controls">
                 <select id="audioSourceSticky" class="compact-select" title="Sets the level meter, Quick Record and Time-Shift.
 Chrome chooses the microphone used for speech recognition - see the note in Settings."></select>
@@ -292,13 +285,34 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
         
         <!-- Status and Transcript Row -->
         <div class="sticky-bottom-row">
-            <button id="startBtnSticky" class="control-btn start-btn" title="Listen for triggers">▶️</button>
-            <button id="stopBtnSticky" class="control-btn stop-btn" title="Stop listening" disabled>⏹️</button>
-            <button id="micSetupBtn" class="control-btn file-btn" title="Choose which microphone Chrome listens to">🎤</button>
+            <div id="brandMenu" style="position:relative;flex:0 0 auto;margin-right:8px;align-self:center;">
+                <img id="brandMenuBtn" src="static/images/Triggerword_logo_medium.png" alt="TriggerWord" title="TriggerWord — links &amp; support" style="height:52px;width:auto;cursor:pointer;display:block;filter:drop-shadow(0 1px 4px rgba(0,0,0,0.35));">
+                <div id="brandMenuDropdown" style="display:none;position:absolute;top:58px;left:0;background:#1d2b33;border:2px solid #ffcc00;border-radius:10px;padding:6px 0;min-width:215px;z-index:99999;box-shadow:0 8px 26px rgba(0,0,0,0.4);">
+                    <a href="https://discord.gg/r4z4EVnt9U" target="_blank" class="brand-menu-link">💬 Hopzle Discord — get help</a>
+                    <a href="https://ko-fi.com/scarylasers_" target="_blank" class="brand-menu-link" style="color:#ff2fd0;">☕ Tip on Ko-fi</a>
+                    <a href="/guide.html" target="_blank" class="brand-menu-link">❓ User Guide</a>
+                    <a href="/routing.html" target="_blank" class="brand-menu-link">🎚️ Audio Routing Guide</a>
+                    <div style="border-top:1px solid #34454f;margin:5px 0;"></div>
+                    <a href="https://www.youtube.com/@ScaryLasers" target="_blank" class="brand-menu-link">▶️ YouTube</a>
+                    <a href="https://www.twitch.tv/scarylasers" target="_blank" class="brand-menu-link">🎮 Twitch</a>
+                    <a href="https://www.tiktok.com/@scarylasers" target="_blank" class="brand-menu-link">🎵 TikTok</a>
+                    <a href="https://www.instagram.com/scarylasers_" target="_blank" class="brand-menu-link">📷 Instagram</a>
+                    <a href="https://x.com/ScaryLasers" target="_blank" class="brand-menu-link">✖️ X</a>
+                    <div style="border-top:1px solid #34454f;margin:5px 0;"></div>
+                    <a href="https://hopzle.com" target="_blank" class="brand-menu-link">🧰 Hopzle Toolkit</a>
+                    <a href="https://github.com/scarylasers/triggerword" target="_blank" class="brand-menu-link">🐙 GitHub</a>
+                </div>
+            </div>
+            <div class="transport-group">
+                <button id="startBtnSticky" class="control-btn start-btn" title="Listen for triggers">▶️</button>
+                <button id="stopBtnSticky" class="control-btn stop-btn" title="Stop listening" disabled>⏹️</button>
+                <button id="micSetupBtn" class="control-btn file-btn" title="Choose which microphone Chrome listens to">🎤</button>
+            </div>
             <div id="statusSticky" class="compact-status">⏸ Not listening — press ▶ to start</div>
             <div id="compactTranscript" class="compact-transcript">
                 <div class="transcript-line">Speak to see transcription...</div>
             </div>
+            <button id="collapseHeaderBtn" class="control-btn file-btn" title="Show/hide the controls">▲</button>
         </div>
         
         <!-- Search Row -->
@@ -3533,7 +3547,7 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
             recognition.onstart = () => {
                 recognitionStartTime = Date.now();
                 console.log('🎤 Fallback speech recognition started at:', new Date().toLocaleTimeString());
-                updateStatus('🎙️ Transcribing — say a trigger word', 'success');
+                updateStatus('Transcribing', 'success');
                 
                 // Clear any pending restart timeout
                 if (restartTimeout) {
@@ -5285,7 +5299,7 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
                     audioMeterContainer.style.display = 'flex';
                 }
                 
-                updateStatus('🎙️ Transcribing — say a trigger word', 'success');
+                updateStatus('Transcribing', 'success');
                 pcmBuffer = [];
                 chunkInterval = setInterval(sendPcmChunk, RECORD_SECONDS * 1000);
                 
@@ -6665,7 +6679,7 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
                 pauseBtn.style.display = 'inline-block';
                 pauseBtn.disabled = false;
                 resumeBtn.style.display = 'none';
-                updateStatus('🎙️ Transcribing — say a trigger word', 'success');
+                updateStatus('Transcribing', 'success');
                 console.log('🔊 Listening resumed');
             }
         }
@@ -8772,7 +8786,7 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
                             } else {
                                 updateStatus('⚠️ No recognition service available', 'error');
                             }
-                            updateStatus('🎙️ Transcribing — say a trigger word', 'success');
+                            updateStatus('Transcribing', 'success');
                         } else if (isPaused) {
                             // Resume if paused
                             if (isConnected) {
@@ -8780,7 +8794,7 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
                             } else if (useFallback && recognition) {
                                 resumeFallbackRecognition();
                             }
-                            updateStatus('🎙️ Transcribing — say a trigger word', 'success');
+                            updateStatus('Transcribing', 'success');
                         } else {
                             // Pause if currently listening
                             if (isConnected) {
@@ -8853,7 +8867,7 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
                     } else {
                         updateStatus('⚠️ No recognition service available', 'error');
                     }
-                    updateStatus('🎙️ Transcribing — say a trigger word', 'success');
+                    updateStatus('Transcribing', 'success');
                 } else if (isPaused) {
                     // Resume if paused
                     if (isConnected) {
@@ -8861,7 +8875,7 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
                     } else if (useFallback && recognition) {
                         resumeFallbackRecognition();
                     }
-                    updateStatus('🎙️ Transcribing — say a trigger word', 'success');
+                    updateStatus('Transcribing', 'success');
                 } else {
                     // Pause if currently listening
                     if (isConnected) {
@@ -10212,6 +10226,27 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
         // Action Menu Button (in sticky header)
         document.getElementById('actionMenuBtn')?.addEventListener('click', toggleActionButtons);
         
+        // Fold the controls away. The logo, transport and transcript stay -
+        // they are the things you look at while streaming; the rest is setup
+        // you touch once. Remembered, so it stays how you left it.
+        (function () {
+            const header = document.getElementById('stickyHeader');
+            const btn = document.getElementById('collapseHeaderBtn');
+            if (!header || !btn) return;
+            const apply = (collapsed) => {
+                header.classList.toggle('collapsed', collapsed);
+                btn.title = collapsed ? 'Show the controls' : 'Hide the controls';
+            };
+            let collapsed = false;
+            try { collapsed = localStorage.getItem('twHeaderCollapsed') === 'true'; } catch (e) {}
+            apply(collapsed);
+            btn.addEventListener('click', () => {
+                collapsed = !header.classList.contains('collapsed');
+                apply(collapsed);
+                try { localStorage.setItem('twHeaderCollapsed', String(collapsed)); } catch (e) {}
+            });
+        })();
+
         // Say up front that nothing is listening yet.
         setTimeout(showIdlePromptIfNotListening, 500);
 
