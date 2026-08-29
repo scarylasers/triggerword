@@ -119,7 +119,8 @@
             padding-bottom: 3px !important;
             font-size: 1.05em !important;
         }
-        .soundboard-grid { margin-top: 6px !important; padding: 6px 16px !important; }
+        .soundboard-grid { margin-top: 4px !important; padding: 6px 10px !important; }
+        .tw-section-title { margin: 6px 0 2px !important; }
 
         /* A thin strip at the bottom edge of the header holding the fold
            toggle, so it reads as "this panel collapses" rather than sitting
@@ -284,6 +285,7 @@
         <!-- Main Controls Row -->
         <div class="sticky-controls-row">
             <div class="device-controls">
+                <button id="micSetupBtn" class="control-btn file-btn" title="Choose which microphone Chrome listens to">🎤</button>
                 <select id="audioSourceSticky" class="compact-select" style="display:none" title="Sets the level meter, Quick Record and Time-Shift.
 Chrome chooses the microphone used for speech recognition - see the note in Settings."></select>
                 <select id="audioOutputSticky" class="compact-select"></select>
@@ -338,7 +340,6 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
             <div class="transport-group">
                 <button id="startBtnSticky" class="control-btn start-btn" title="Listen for triggers">▶️</button>
                 <button id="stopBtnSticky" class="control-btn stop-btn" title="Stop listening" disabled>⏹️</button>
-                <button id="micSetupBtn" class="control-btn file-btn" title="Choose which microphone Chrome listens to">🎤</button>
             </div>
             <div id="statusSticky" class="compact-status">⏸ Not listening — press ▶ to start</div>
             <div id="compactTranscript" class="compact-transcript">
@@ -10140,12 +10141,22 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
                 header.classList.toggle('collapsed', collapsed);
                 btn.title = collapsed ? 'Show the controls' : 'Hide the controls';
             };
+            // The body used to reserve a fixed 140px for the header, so
+            // folding it away left the gap behind. Measure instead, and the
+            // page moves up with it.
+            const fitBody = () => {
+                document.body.style.paddingTop = (header.offsetHeight + 4) + 'px';
+            };
+            window.addEventListener('resize', fitBody);
             let collapsed = false;
             try { collapsed = localStorage.getItem('twHeaderCollapsed') === 'true'; } catch (e) {}
             apply(collapsed);
+            requestAnimationFrame(fitBody);
+            setTimeout(fitBody, 600);
             btn.addEventListener('click', () => {
                 collapsed = !header.classList.contains('collapsed');
                 apply(collapsed);
+                fitBody();
                 try { localStorage.setItem('twHeaderCollapsed', String(collapsed)); } catch (e) {}
             });
         })();

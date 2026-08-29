@@ -3,9 +3,9 @@
         .soundboard-grid {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
-            gap: 16px;
-            margin-top: 16px;
-            padding: 16px;
+            gap: 10px;
+            margin-top: 4px;
+            padding: 6px 10px;
         }
         @media (max-width: 1200px) {
             .soundboard-grid { grid-template-columns: repeat(4, 1fr); }
@@ -137,8 +137,10 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             max-width: 800px;
             margin: 0 auto;
-            padding: 20px;
-            padding-top: 140px;  /* Space for sticky header */
+            padding: 4px;
+            /* Set from JS to the header's real height, so folding the header
+               moves the board up with it instead of leaving a gap. */
+            padding-top: 140px;
             text-align: center;
             background-color: #f5f5f5;
         }
@@ -576,6 +578,7 @@
             top: 0;
             left: 0;
             right: 0;
+            padding-bottom: 2px;
             background: linear-gradient(181deg, #16ffe0 0%, #00000024 100%);
             box-shadow: 0 2px 8px rgba(0,0,0,0.2);
             z-index: 1000;
@@ -757,8 +760,8 @@
         .sticky-bottom-row {
             display: flex;
             align-items: center;
-            gap: 12px;
-            margin-bottom: 4px;
+            gap: 8px;
+            margin-bottom: 2px;
         }
         
         /* Search Row Styles */
