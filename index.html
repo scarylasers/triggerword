@@ -314,12 +314,20 @@
                 the dropdown here only sets the level meter and recording, so the two
                 can disagree.
                 <br><br>
-                To set Chrome's choice: open
-                <code style="background:#d5efe9;padding:1px 5px;border-radius:4px;">http://localhost:8002</code>
-                in a <em>normal browser tab</em>, click the <strong>🎤 icon in the address
-                bar</strong>, and pick your microphone. It sticks for that address, so this
-                window uses it from then on — this window has no address bar, which is why
-                it has to be done in a tab once.
+                This window has no address bar, so Chrome's microphone picker isn't
+                reachable from here. The button opens TriggerWord in a normal tab where
+                it is:
+                <div style="margin-top:10px;">
+                    <button id="openMicPickerBtn" type="button" style="background:#19bfae;color:#fff;border:none;border-radius:6px;padding:9px 16px;font-weight:600;cursor:pointer;">
+                        🎤 Choose microphone in Chrome…
+                    </button>
+                </div>
+                <div style="margin-top:8px;font-size:0.95em;">
+                    In that tab, press <strong>Listen for triggers</strong>, then click the
+                    <strong>🎤 icon that appears in the address bar</strong> and pick your
+                    microphone from the dropdown. Chrome remembers it for this address, so
+                    this window uses it from then on.
+                </div>
             </div>
             
             <div class="settings-section">
@@ -10151,6 +10159,15 @@
         // always applies.
         const micNote = document.getElementById('micPickerNote');
         if (micNote) micNote.style.display = 'block';
+
+        // Chrome's microphone picker lives behind the address-bar mic icon, and
+        // an --app window has no address bar. Opening the same origin as an
+        // ordinary window gets one, and the choice is remembered per origin, so
+        // it only has to be done once.
+        document.getElementById('openMicPickerBtn')?.addEventListener('click', () => {
+            window.open(location.origin + '/?micsetup=1', '_blank');
+            updateStatus('Opened a tab — press Listen there, then click the 🎤 in the address bar', 'info');
+        });
 
         // Version stamp (single source: APP_VERSION above)
         const versionLabel = document.getElementById('appVersionLabel');
