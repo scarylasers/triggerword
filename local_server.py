@@ -17,6 +17,17 @@ import time
 import atexit
 from pathlib import Path
 
+# This file logs with emoji, and the launchers run it hidden with output
+# redirected to a file. A redirected stdout on Windows defaults to cp1252,
+# where the first emoji raises UnicodeEncodeError - which killed the server
+# at startup and, once past that, killed the transcription loop on the first
+# audio chunk it tried to log. Force UTF-8 before anything prints.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass  # pythonw gives None streams; nothing to log to anyway
+
 app = FastAPI()
 
 # Add CORS middleware
