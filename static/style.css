@@ -699,16 +699,19 @@
             flex: 1;
             background: #f8f9fa;
             padding: 6px 10px;
-            height: 28px;
+            /* Long speech used to run off the end and vanish. Wrap it, grow to
+               a few lines, then scroll - the newest words stay on screen. */
+            min-height: 28px;
+            max-height: 58px;
             line-height: 16px;
             font-size: 0.85em;
             font-family: monospace;
             color: #333;
-            overflow: hidden;
-            white-space: nowrap;
-            text-overflow: ellipsis;
+            overflow-y: auto;
+            white-space: normal;
+            overflow-wrap: anywhere;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             outline: none;
             transition: all 0.2s ease;
         }

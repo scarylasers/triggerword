@@ -109,10 +109,42 @@
         .tab-bar {
             display: flex;
             flex-wrap: wrap;
-            gap: 8px;
+            gap: 6px;
             align-items: center;
-            padding: 6px 16px 0;
+            padding: 4px 16px 0;
         }
+        .tw-section-title {
+            text-align: left !important;
+            margin: 10px 0 4px !important;
+            padding-bottom: 3px !important;
+            font-size: 1.05em !important;
+        }
+        .soundboard-grid { margin-top: 6px !important; padding: 6px 16px !important; }
+
+        /* A thin strip at the bottom edge of the header holding the fold
+           toggle, so it reads as "this panel collapses" rather than sitting
+           in the transcript row. */
+        /* Tucked onto the header's bottom-right edge and taken out of the
+           flow, so the fold control costs no vertical space at all. */
+        .header-collapse-strip {
+            position: absolute;
+            right: 8px;
+            bottom: 0;
+            line-height: 0;
+        }
+        .header-collapse-strip button {
+            border: none;
+            background: rgba(0,0,0,0.18);
+            color: #fff;
+            border-radius: 6px 6px 0 0;
+            padding: 0 16px;
+            font-size: 0.65em;
+            line-height: 12px;
+            height: 12px;
+            cursor: pointer;
+        }
+        .header-collapse-strip button:hover { background: rgba(0,0,0,0.35); }
+        .sticky-header { position: fixed; }
         .tw-tab {
             border: 2px solid #19bfae;
             background: #ffffff;
@@ -214,8 +246,8 @@
     </div>
     
     <div class="controls">
-        <label for="audioSource" style="font-weight:600;margin-right:8px;" title="Sets the level meter, Quick Record and Time-Shift. Chrome chooses the microphone used for speech recognition.">Mic for meter &amp; recording:</label>
-        <select id="audioSource" style="margin-right:18px;"></select>
+        <label for="audioSource" style="display:none">Mic:</label>
+        <select id="audioSource" style="display:none"></select>
         <span id="audioDeviceMsg" style="color:#c62828;font-size:0.97em;margin-right:12px;display:none;"></span>
         <br style="margin-bottom:8px;">
         <label for="audioOutput" style="font-weight:600;margin-right:8px;">Audio Output Device:</label>
@@ -252,7 +284,7 @@
         <!-- Main Controls Row -->
         <div class="sticky-controls-row">
             <div class="device-controls">
-                <select id="audioSourceSticky" class="compact-select" title="Sets the level meter, Quick Record and Time-Shift.
+                <select id="audioSourceSticky" class="compact-select" style="display:none" title="Sets the level meter, Quick Record and Time-Shift.
 Chrome chooses the microphone used for speech recognition - see the note in Settings."></select>
                 <select id="audioOutputSticky" class="compact-select"></select>
             </div>
@@ -312,7 +344,6 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
             <div id="compactTranscript" class="compact-transcript">
                 <div class="transcript-line">Speak to see transcription...</div>
             </div>
-            <button id="collapseHeaderBtn" class="control-btn file-btn" title="Show/hide the controls">▲</button>
         </div>
         
         <!-- Search Row -->
@@ -321,6 +352,9 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
             <button id="pauseAutoTriggerBtn" class="pause-auto-trigger-btn" title="Pause automatic triggering">⏸️🎯</button>
             <button id="liveSearchToggle" class="live-search-toggle" title="Toggle live transcription search">🎯</button>
             <div id="searchSuggestions" class="search-suggestions"></div>
+        </div>
+        <div class="header-collapse-strip">
+            <button id="collapseHeaderBtn" title="Show/hide the controls">▲</button>
         </div>
     </div>
     
@@ -3299,7 +3333,9 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
                         option.textContent = device.label || `Microphone ${audioSourceSelect.length + 1}`;
                         audioSourceSelect.appendChild(option);
                     });
-                    selectedDeviceId = audioInputs[0].deviceId;
+                    // Left empty on purpose - see the note below. Streams
+                    // follow Chrome's microphone, not the first enumerated one.
+                    selectedDeviceId = '';
                 }
                 
                 // Populate output devices
@@ -3324,25 +3360,16 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
                 }
                 
                 // Load saved selections
-                const savedInput = localStorage.getItem('selectedInputDevice');
                 const savedOutput = localStorage.getItem('selectedOutputDevice');
                 const savedVolume = localStorage.getItem('masterVolume');
                 
-                // Restore input device selection
-                if (savedInput) {
-                    // Check if the saved device still exists
-                    const inputExists = audioInputs.some(device => device.deviceId === savedInput);
-                    if (inputExists) {
-                        audioSourceSelect.value = savedInput;
-                        selectedDeviceId = savedInput;
-                        console.log('🎤 Restored input device:', audioSourceSelect.options[audioSourceSelect.selectedIndex].text);
-                    } else {
-                        console.log('⚠️ Previously selected input device no longer available');
-                        selectedDeviceId = audioInputs[0]?.deviceId;
-                    }
-                } else {
-                    selectedDeviceId = audioInputs[0]?.deviceId;
-                }
+                // The app no longer picks the microphone - Chrome does, via
+                // its own picker, and that is the device it transcribes from.
+                // Leaving this empty makes every stream we open (the level
+                // meter, Quick Record, Time-Shift) omit a deviceId constraint
+                // and follow Chrome, so the meter shows what is actually being
+                // heard instead of a second, competing choice.
+                selectedDeviceId = '';
                 
                 // Restore output device selection
                 if (savedOutput) {
@@ -3426,14 +3453,9 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
         const AUDIO_FEEDBACK_BLOCK_DURATION = 3000; // 3 seconds
         
         // Audio level meter elements
-        const audioMeterContainer = document.getElementById('audioMeterContainer');
-        const audioMeterFill = document.getElementById('audioMeterFill');
-        const audioMeterText = document.getElementById('audioMeterText');
-        let audioLevel = 0;
         
         // Standalone audio meter variables (independent of main recording)
         let meterAudioContext = null;
-        let meterStream = null;
         let meterAnalyser = null;
         let meterDataArray = null;
         let meterAnimationFrame = null;
@@ -5295,9 +5317,6 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
                 if (mainAudioMeterContainer) {
                     mainAudioMeterContainer.style.display = 'block';
                 }
-                if (audioMeterContainer) {
-                    audioMeterContainer.style.display = 'flex';
-                }
                 
                 updateStatus('Transcribing', 'success');
                 pcmBuffer = [];
@@ -5329,7 +5348,6 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
                         isRecording = true;
                         isPaused = false;
                         
-                        audioMeterContainer.style.display = 'block';
                         updateStatus('Listening with default device', 'success');
                         pcmBuffer = [];
                         chunkInterval = setInterval(sendPcmChunk, RECORD_SECONDS * 1000);
@@ -5366,8 +5384,6 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
             }
             const rms = Math.sqrt(sumSquares / inputData.length);
             
-            // Update audio level meter
-            updateAudioMeter(rms);
             
             // Always process audio data, even if quiet
             let pcm = new Int16Array(inputData.length);
@@ -5386,124 +5402,9 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
         }
         
         // Function to update the audio level meter
-        function updateAudioMeter(rms) {
-            // Convert RMS to a percentage (0-100%)
-            // RMS values are typically very small, so we'll scale them up
-            const scaledLevel = Math.min(100, rms * 3000); // Scale factor of 3000
-            audioLevel = scaledLevel;
-            
-            // Update the visual meter
-            if (audioMeterFill && audioMeterText) {
-                audioMeterFill.style.width = `${scaledLevel}%`;
-                audioMeterText.textContent = `${Math.round(scaledLevel)}%`;
-            }
-        }
-        
-        // Standalone audio meter functions
-        async function startStandaloneAudioMeter() {
-            try {
-                if (meterStream) {
-                    console.log('🎵 Standalone audio meter already running');
-                    return;
-                }
-                
-                console.log('🎵 Starting standalone audio meter...');
-                
-                // Get audio stream for meter
-                const audioConstraints = {
-                    audio: {
-                        deviceId: selectedDeviceId ? { ideal: selectedDeviceId } : undefined,
-                        echoCancellation: false,
-                        noiseSuppression: false,
-                        autoGainControl: false
-                    }
-                };
-                
-                meterStream = await navigator.mediaDevices.getUserMedia(audioConstraints);
-                meterAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-                
-                const source = meterAudioContext.createMediaStreamSource(meterStream);
-                meterAnalyser = meterAudioContext.createAnalyser();
-                meterAnalyser.fftSize = 256;
-                meterAnalyser.smoothingTimeConstant = 0.8;
-                
-                const bufferLength = meterAnalyser.frequencyBinCount;
-                meterDataArray = new Uint8Array(bufferLength);
-                
-                source.connect(meterAnalyser);
-                
-                // Start the meter update loop
-                updateStandaloneMeter();
-                
-                console.log('✅ Standalone audio meter started');
-                
-            } catch (error) {
-                console.error('❌ Error starting standalone audio meter:', error);
-                updateStatus('Could not access microphone for audio meter', 'warning');
-            }
-        }
-        
-        function updateStandaloneMeter() {
-            if (!meterAnalyser || !meterDataArray) {
-                return;
-            }
-            
-            meterAnimationFrame = requestAnimationFrame(updateStandaloneMeter);
-            
-            // Get frequency data
-            meterAnalyser.getByteFrequencyData(meterDataArray);
-            
-            // Calculate average volume
-            let sum = 0;
-            for (let i = 0; i < meterDataArray.length; i++) {
-                sum += meterDataArray[i];
-            }
-            const average = sum / meterDataArray.length;
-            
-            // Scale the average (0-255) to percentage (0-100)
-            const scaledLevel = (average / 255) * 100;
-            
-            // Update the visual meter
-            if (audioMeterFill && audioMeterText) {
-                audioMeterFill.style.width = `${scaledLevel}%`;
-                audioMeterText.textContent = `${Math.round(scaledLevel)}%`;
-            }
-        }
-        
-        function stopStandaloneAudioMeter() {
-            try {
-                console.log('🛑 Stopping standalone audio meter...');
-                
-                if (meterAnimationFrame) {
-                    cancelAnimationFrame(meterAnimationFrame);
-                    meterAnimationFrame = null;
-                }
-                
-                if (meterStream) {
-                    meterStream.getTracks().forEach(track => track.stop());
-                    meterStream = null;
-                }
-                
-                if (meterAudioContext) {
-                    meterAudioContext.close();
-                    meterAudioContext = null;
-                }
-                
-                meterAnalyser = null;
-                meterDataArray = null;
-                
-                // Reset meter display
-                if (audioMeterFill && audioMeterText) {
-                    audioMeterFill.style.width = '0%';
-                    audioMeterText.textContent = '0%';
-                }
-                
-                console.log('✅ Standalone audio meter stopped');
-                
-            } catch (error) {
-                console.error('❌ Error stopping standalone audio meter:', error);
-            }
-        }
+        // The level meter was removed - it was never rendered (no element
+        // existed for it) and it would have shown a different device from the
+        // one Chrome transcribes, which is worse than showing nothing.
 
         function sendPcmChunk() {
             if (!isRecording || isPaused || pcmBuffer.length === 0) {
@@ -6701,9 +6602,6 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
                 if (mainAudioMeterContainer) {
                     mainAudioMeterContainer.style.display = 'none';
                 }
-                if (audioMeterContainer) {
-                    audioMeterContainer.style.display = 'none';
-                }
                 
                 if (chunkInterval) clearInterval(chunkInterval);
                 if (scriptNode) scriptNode.disconnect();
@@ -7121,7 +7019,8 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
                 const favoritesTitle = document.createElement('h3');
                 favoritesTitle.textContent = '⭐ Favorites';
                 favoritesTitle.style.color = '#ff6b35';
-                favoritesTitle.style.marginBottom = '10px';
+                favoritesTitle.className = 'tw-section-title';
+                favoritesTitle.style.marginBottom = '4px';
                 favoritesTitle.style.borderBottom = '2px solid #ff6b35';
                 favoritesTitle.style.paddingBottom = '5px';
                 triggerList.appendChild(favoritesTitle);
@@ -7136,9 +7035,9 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
                 
                 // Add separator
                 const separator = document.createElement('div');
-                separator.style.height = '20px';
+                separator.style.height = '1px';
                 separator.style.borderBottom = '1px solid #ddd';
-                separator.style.margin = '20px 0';
+                separator.style.margin = '8px 16px';
                 triggerList.appendChild(separator);
             }
             
@@ -7147,7 +7046,8 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
                 const quickRecordingsTitle = document.createElement('h3');
                 quickRecordingsTitle.textContent = '🎙️ Quick & Time-Shift Recordings';
                 quickRecordingsTitle.style.color = '#e91e63';
-                quickRecordingsTitle.style.marginBottom = '10px';
+                quickRecordingsTitle.className = 'tw-section-title';
+                quickRecordingsTitle.style.marginBottom = '4px';
                 quickRecordingsTitle.style.borderBottom = '2px solid #e91e63';
                 quickRecordingsTitle.style.paddingBottom = '5px';
                 triggerList.appendChild(quickRecordingsTitle);
@@ -7181,9 +7081,10 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
             if (currentTab === 'all' && regularGroups.length > 0) {
                 if (favoriteGroups.length > 0 || quickRecordingGroups.length > 0) {
                     const regularTitle = document.createElement('h3');
-                    regularTitle.textContent = '🎵 All Triggers';
+                    regularTitle.textContent = '🎵 All';
                     regularTitle.style.color = '#1976d2';
-                    regularTitle.style.marginBottom = '10px';
+                    regularTitle.className = 'tw-section-title';
+                regularTitle.style.marginBottom = '4px';
                     triggerList.appendChild(regularTitle);
                 }
                 
@@ -9974,6 +9875,8 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
             // For single-line display, just replace the content directly
             compactTranscript.textContent = text.trim();
             compactTranscript.title = text.trim(); // Show full text on hover
+            // Keep the words being said right now in view as it wraps.
+            compactTranscript.scrollTop = compactTranscript.scrollHeight;
         }
         
         // Function to sync status between main and sticky
