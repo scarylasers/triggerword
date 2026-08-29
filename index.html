@@ -9421,19 +9421,10 @@
         
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', () => {
-            // Two ways to transcribe, and they differ in one way that matters:
-            //
-            //   Whisper server  - transcribes the stream THIS PAGE opens, so
-            //                     the microphone dropdown genuinely decides
-            //                     what is heard.
-            //   Chrome's own    - takes no device argument at all. It listens
-            //                     to whichever microphone Chrome picks, which
-            //                     the page cannot set. The dropdown can then
-            //                     disagree with what is actually heard.
-            //
-            // So prefer the server when it is running, and fall back to the
-            // browser otherwise. transcriptionMode drives the status text, so
-            // it is always clear which one is live.
+            // Transcription is Chrome's speech recognition, always. There was
+            // briefly a second path through a local Whisper server; it made the
+            // app behave differently depending on which server happened to be
+            // running, which is confusing and not worth the one thing it bought.
             useFallback = true;
             if (initFallbackRecognition()) {
                 console.log('✅ Browser speech recognition initialized');
@@ -9442,29 +9433,7 @@
                 updateStatus('Speech recognition not available in this browser', 'error');
             }
 
-            // Ask the server what it can do before assuming. The installed
-            // build is a plain file server, so there is no Whisper endpoint to
-            // connect to - trying anyway would show reconnection warnings for
-            // a feature that build does not have.
-            window.transcriptionMode = 'browser';
-            fetch('/capabilities')
-                .then(r => r.ok ? r.json() : null)
-                .then(caps => {
-                    if (!caps || !caps.whisper) {
-                        console.log('🎤 Chrome speech recognition - Chrome chooses the microphone, not the dropdown');
-                        return;
-                    }
-                    connectWebSocket();
-                    setTimeout(() => {
-                        if (isConnected) {
-                            useFallback = false;
-                            window.transcriptionMode = 'whisper';
-                            console.log('🎧 Whisper server - the microphone dropdown selects what is heard');
-                            updateStatus('Whisper connected — your selected microphone is used', 'success');
-                        }
-                    }, 2500);
-                })
-                .catch(() => {});
+            console.log('🎤 Chrome speech recognition - Chrome chooses the microphone (see the note in Settings)');
             
             // Audio Trimmer Modal event listeners
             document.getElementById('closeAudioTrimmerModal')?.addEventListener('click', closeAudioTrimmerModal);
@@ -10178,14 +10147,10 @@
         // Action Menu Button (in sticky header)
         document.getElementById('actionMenuBtn')?.addEventListener('click', toggleActionButtons);
         
-        // The Chrome-picks-the-mic note only applies to browser recognition.
-        // With the Whisper server the dropdown really does decide, so showing
-        // it there would be actively misleading. Deferred so transcriptionMode
-        // has been settled by the capability probe.
-        setTimeout(() => {
-            const note = document.getElementById('micPickerNote');
-            if (note && window.transcriptionMode !== 'whisper') note.style.display = 'block';
-        }, 4000);
+        // Chrome always picks the microphone for transcription, so this note
+        // always applies.
+        const micNote = document.getElementById('micPickerNote');
+        if (micNote) micNote.style.display = 'block';
 
         // Version stamp (single source: APP_VERSION above)
         const versionLabel = document.getElementById('appVersionLabel');
