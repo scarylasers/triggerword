@@ -1,230 +1,139 @@
-# TriggerWord
+<div align="center">
 
-A soundboard that listens.
+<img src="static/images/Triggerword_logo_medium.png" alt="TriggerWord" width="420">
 
-You say a word while streaming. It plays the sound. You never touch a key, never
-alt-tab, never break what you were doing.
+**Say a word while you're talking and it plays the sound. No hotkey, nothing to alt-tab to.**
 
-That is the whole idea.
+*A [Hopzle Toolkit](https://hopzle.com/) app — free, and it runs entirely on your own PC.*
 
----
+### [⬇ Download TriggerWord for Windows](https://github.com/scarylasers/triggerword/releases/latest)
 
-## Why this exists
-
-Soundboards are usually operated by hand, which means every sound costs you a
-glance at a second screen and a break in whatever you were saying. In VR it is
-worse — your hands are busy being hands.
-
-So this listens instead. Say the word, get the sound, keep talking.
-
-**But the reason it works is restraint, and that needs saying plainly.**
-
-There is a very fine line between *funny* and *annoying*, and a listening
-soundboard sits right on it. A sound that lands once is a joke. The same sound
-on a hair trigger, five times in a minute, is a reason to close the tab.
-
-This tool is built for the funny side of that line:
-
-- **Trigger words are yours to choose.** Pick words you actually say at moments
-  that actually deserve a sound. Not "the" and not "and".
-- **Cooldowns exist on purpose.** A trigger that just fired will not fire again
-  immediately. This is a feature. Leave it on.
-- **Levelling is built in** so nothing blasts your listeners. See below.
-- **Everything is local.** No account, no server, no telemetry. Your audio never
-  leaves the machine.
-
-Use it responsibly. The people listening did not consent to an airhorn.
-
----
-
-## Install it — the easy way
-
-Download **`TriggerWord-Setup.exe`** from the
-[latest release](https://github.com/scarylasers/triggerword/releases/latest)
-and run it. Python is bundled, so there is nothing else to install and nothing
-to unzip — you get a desktop shortcut and a normal uninstaller.
-
-> Windows will show *"Windows protected your PC"* because the installer isn't
-> code-signed (those certificates are expensive). Click **More info → Run
-> anyway**. All the source is right here if you'd rather read it first.
-
-You still need **Chrome or Edge** installed — speech recognition and per-sound
-output routing are Chromium features.
-
-Then: click **Allow** for the microphone, import the starter pack, and say
-**"lasers"**.
-
-## Run from source — the developer way
-
-This route also unlocks the advanced features (offline Whisper, global hotkeys).
-
-1. **Download this repository** — the green *Code* button → *Download ZIP* →
-   unzip it somewhere you'll find again.
-2. **Double-click `start-triggerword.bat`** (Windows).
-   A black window opens and stays open. That is the app running — leave it.
-3. TriggerWord opens in its own window (or at **http://localhost:8002** in a
-   browser tab if neither Chrome nor Edge is installed).
-4. **Click "Allow"** when it asks for your microphone. Nothing works without it.
-5. Import the included **`TriggerWord-Starter-Pack.zip`** (use *Import backup*
-   in the 🔧 menu to also get favorites) — original SCARYLASERS sounds and
-   songs. Or add your own sounds one at a time.
-6. Say one of your trigger words. Try **"lasers"**. Say **"quiet"** to fade
-   everything out — including the full songs.
-
-The full manual lives in **[guide.html](guide.html)** — also reachable from the
-⚙️ settings inside the app (❓ User Guide).
-
-To stop it: close the TriggerWord window.
-
-**To update later:** double-click `update-triggerword.bat` — it fetches the
-latest version and replaces the app files. Your sounds and settings live in
-your browser, not this folder, so updates never touch them.
-
-> **No Python?** Install it from [python.org](https://www.python.org/downloads/)
-> and tick **"Add Python to PATH"** during setup. Nothing else is needed — the
-> app does not use any Python packages.
-
-### Why does it need a browser at all?
-
-TriggerWord is a web page that runs on your own machine. There is no website, no
-cloud, no sign-in. The little black window is a file server handing the page to
-your browser and nothing more.
+</div>
 
 ---
 
 ## What it does
 
-| | |
-|---|---|
-| **Listens** | Uses your browser's built-in speech recognition. No AI model to download. |
-| **Plays sounds** | One or many per trigger word, chosen at random if you add several. |
-| **Levels sounds** | Measures each sound once and turns down the loud ones so nothing startles anyone. |
-| **Remembers** | Your pack, triggers, shortcuts and favourites persist between sessions. |
-| **Backs up** | One file containing everything — sounds, triggers, settings, shortcuts, trims. |
-| **Routes audio** | Pick which output device sounds play to — a virtual cable for streaming, for example. |
+A soundboard you operate by talking. You pick the words; when you say one mid-sentence,
+the sound fires. You never reach for a key or glance at a second screen.
 
----
+That matters most in VR, where your hands are busy being hands — but it works the same
+on any stream.
 
-## Levelling — why your sounds stop being startling
+Say **"quiet"** and everything playing fades out, which is what makes triggering whole
+songs practical instead of just one-liners.
 
-Soundboards collect clips from everywhere, and those clips are at wildly
-different volumes. One is a quiet clip from a film; the next is a phone
-recording that peaks into distortion. Played back to back, the second one hurts.
+## Getting it
 
-TriggerWord measures every sound once when you add it, then **turns the loud
-ones down** so they sit closer together. Nothing is boosted, and nothing clips.
+1. **[Download the installer](https://github.com/scarylasers/triggerword/releases/latest)**
+   and run it. It installs just for you, so it never asks for an administrator password.
+2. Windows will probably say **"Windows protected your PC"**. That appears for any app
+   without a paid certificate. Click **More info**, then **Run anyway**.
+3. Open **TriggerWord** from your desktop or Start menu.
 
-If a particular sound still isn't right, each one has a **trim slider**
-(±12 dB) and an **auto** button to put it back.
+**You need:** Windows 10 or 11, and **Chrome or Edge** installed — the speech recognition
+and the per-sound output routing are both Chromium features. Everything else, Python
+included, is bundled.
 
-The honest limitation: because levelling is applied through the audio element's
-own volume, sounds can only be turned **down**, never up. Everything therefore
-ends up a little quieter overall — turn your master volume up to compensate.
-This was a deliberate trade so that **output-device routing keeps working**,
-which matters if you send soundboard audio to a virtual cable for streaming.
+## Using it
 
----
+1. **Click Allow** when it asks for your microphone. Nothing works without it.
+2. **Import the starter pack** — ⚙️ Settings → *Import backup* → `TriggerWord-Starter-Pack.zip`,
+   which ships with the app. You get SCARYLASERS sounds, songs and a few favourites.
+3. **Press Listen for triggers** and say **"lasers"**.
+4. **Add your own** with ➕: give a trigger one word or several, and attach as many sounds
+   as you like — it picks one at random each time, which is what keeps a trigger funny.
 
-## Backups — read this once
+📖 **[The user guide](guide.html)** covers the rest — tabs, favourites, keyboard shortcuts,
+recording your own drops, and time-shift capture for grabbing the funny thing *after* it
+happened. It is installed with the app: ⚙️ Settings → ❓ User Guide.
 
-Your sounds live in your browser's storage. That is normally fine, but browsers
-can be cleared, and profiles can be reset.
+🎚️ **[The audio routing guide](routing.html)** is the one to read if you want teammates to
+*hear* your soundboard, or their voices to *trigger* it. That takes Voicemeeter, and it has
+a diagram.
 
-**Use "Export backup (everything)".** It writes a single ZIP containing your
-sounds, triggers, shortcuts, favourites, settings and volume trims. Keep it
-somewhere that isn't your browser.
+## A word about restraint
 
-"Import backup" puts it all back.
+There is a very fine line between *funny* and *annoying*, and a soundboard that listens sits
+right on it. A sound that lands once is a joke; the same sound five times a minute is a
+reason to mute you.
 
-That backup ZIP is also a normal soundpack, so older versions of TriggerWord can
-still open it — they just ignore the extra settings.
+So: pick words you actually say at moments that deserve a sound, and leave the cooldowns
+alone — a trigger that just fired won't fire again immediately, on purpose. Every sound is
+also measured once when you add it and the loud ones turned down, so nothing startles
+anyone.
 
----
+The people listening did not consent to an airhorn.
 
-## Advanced install
+## Back up your sounds
 
-If you want the FastAPI server instead of the simple one — it adds a WebSocket
-endpoint used by an older Whisper-based transcription path:
+Your library lives in your browser's storage. That is normally fine, but browsers get
+cleared and profiles get reset.
 
-```bash
-python -m venv venv
-venv\Scripts\activate          # macOS/Linux: source venv/bin/activate
-pip install -r requirements.txt
-python local_server.py
-```
+**Export backup (everything)** writes one ZIP with your sounds, triggers, favourites,
+shortcuts, settings and volume trims. Keep it somewhere that isn't your browser.
+**Import backup** puts it all back — and that same ZIP is a normal soundpack, so you can
+hand it to a friend.
 
-Be aware this pulls in **torch and openai-whisper**, which are large downloads.
-The soundboard itself does not need them — trigger detection runs in the
-browser. Most people should use the quickstart above.
+## If something goes wrong
 
----
+**The device dropdowns are empty.** Microphone permission was denied at some point and the
+browser remembered. Open `chrome://settings/content/microphone`, allow
+`http://localhost:8002`, and restart.
 
-## Requirements and limits
+**Nothing happens when you speak.** Check the microphone dropdown points at the mic you're
+actually using and that the app says it's listening. It needs a moment of clear speech, not
+one muttered syllable.
 
-- **Chrome or Edge.** Speech recognition and output-device selection are both
-  Chromium features. Firefox and Safari will not work properly.
-- **A microphone**, and permission granted to the page.
-- **Windows** for the `.bat` launcher; on macOS or Linux run
-  `python3 -m http.server 8002` in the project folder and open
-  `http://localhost:8002`.
+**Sounds play to the wrong device.** Set the output device in the app, not just in Windows —
+each sound is routed individually.
 
----
+Anything else, bring it to the [Hopzle Discord](https://discord.gg/r4z4EVnt9U).
 
-## Troubleshooting
+## Your privacy
 
-**The device dropdowns are empty.**
-Microphone permission was never granted. Open
-`chrome://settings/content/microphone`, add `http://localhost:8002` under
-*Allowed*, and restart. If you launch the app in a window with no address bar,
-there is no padlock icon to click — this is the way to fix it.
+Everything happens on your computer. There is no account, no server and no telemetry, and
+your audio never leaves the machine. The app checks GitHub about once a day to see whether
+a newer version exists; if you're offline it carries on quietly.
 
-**Nothing happens when I speak.**
-Check the microphone dropdown is set to the mic you are actually using, and that
-the page says it is listening. Speech recognition needs a moment of clear speech;
-it will not catch a single muttered syllable.
+## Running it from source
 
-**Sounds play to the wrong device.**
-Set the output device in the app, not just in Windows. Each sound is routed
-individually.
+The installer is the easy road. If you'd rather run the source — and it's the same app —
+clone the repo and double-click **`start-triggerword.bat`**. You need
+[Python](https://www.python.org/downloads/) with *Add Python to PATH* ticked; no packages
+are required for the basic app.
 
-**I lost my soundpack.**
-Import your backup ZIP. If you don't have one, make one now — see Backups above.
+That route also unlocks two extras, if you `pip install -r requirements.txt`:
 
----
-
-## Development
+- **Offline speech recognition** with a local Whisper model, instead of the browser's.
+- **Global hotkeys** — <kbd>F13</kbd>–<kbd>F24</kbd> fire triggers even when the window
+  isn't focused, which is what makes macro pads and stream decks work.
 
 ```bash
 node --test        # 28 tests, no dependencies to install
 ```
 
-Persistence and levelling logic lives in `persistence.js` as pure functions with
-no DOM or storage access, which is what makes it testable outside a browser. All
-I/O stays in `index.html`.
+Persistence and levelling live in `persistence.js` as pure functions with no DOM or storage
+access, which is what makes them testable outside a browser. All the I/O stays in
+`index.html`.
+
+## Open for everyone
+
+It is **GPL-3.0**, so fork it, fix it, point it at something else entirely. If you share
+your version you have to share its source too, which means nobody can take this
+closed-source. Issues and pull requests welcome — see **[NOTICE.md](NOTICE.md)** for what
+the licence does and does not cover (the artwork, the names and the starter-pack songs stay
+ScaryLasers').
 
 ---
 
-## Support
+<div align="center">
 
-TriggerWord is free, part of the [Hopzle Toolkit](https://hopzle.com), made by
-[SCARYLASERS](https://www.youtube.com/@ScaryLasers). If it made your stream
-funnier, tips keep the toolkit growing: **[ko-fi.com/scarylasers_](https://ko-fi.com/scarylasers_)** ☕
+**[hopzle.com](https://hopzle.com/)** · [Discord](https://discord.gg/r4z4EVnt9U)
+· [YouTube](https://www.youtube.com/@ScaryLasers)
+· [Twitch](https://www.twitch.tv/scarylasers)
+· [Ko-fi](https://ko-fi.com/scarylasers_)
 
-[YouTube](https://www.youtube.com/@ScaryLasers) ·
-[Twitch](https://www.twitch.tv/scarylasers) ·
-[TikTok](https://www.tiktok.com/@scarylasers) ·
-[Instagram](https://www.instagram.com/scarylasers_) ·
-[X](https://x.com/ScaryLasers) ·
-[Reddit](https://www.reddit.com/user/scarylasers/)
+you're welcome… — SCARYLASERS 🐰
 
-## License
-
-**GPL-3.0** — see [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).
-
-Use it, fork it, build on it. If you distribute your version — free or paid —
-you have to publish its source under the same licence, so nobody can take
-TriggerWord closed-source. The name and the artwork stay mine; give your fork
-its own.
-
-The starter-pack songs are original SCARYLASERS tracks, included for personal
-soundboard use and not covered by the code licence.
+</div>
