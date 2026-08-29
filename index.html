@@ -8001,7 +8001,9 @@
                     }
                 }
 
-                // Map manifest to triggers and attach blobs
+                // Map manifest to triggers and attach blobs. The spread keeps
+                // whatever else the manifest carried - `tab` especially, so an
+                // imported pack lands on the pages it was organised into.
                 triggers = manifest.map(t => ({
                     ...t,
                     sounds: (t.sounds || []).map(s => ({
@@ -8009,6 +8011,28 @@
                         blob: audioBlobs[s.name] || null
                     }))
                 }));
+
+                // Favourites ride alongside in their own file (see the export).
+                const favFile = zip.file('favorites.json');
+                if (favFile) {
+                    try {
+                        const names = JSON.parse(await favFile.async('text'));
+                        if (Array.isArray(names)) {
+                            names.forEach(w => favoriteTriggers.add(w));
+                            saveFavoritesToStorage();
+                            console.log(`⭐ Restored ${names.length} favourite(s) from the pack`);
+                        }
+                    } catch (e) {
+                        console.warn('Could not read favorites.json from the pack:', e);
+                    }
+                }
+
+                // Any tab a pack refers to has to exist as a tab, or its cards
+                // would only be reachable from All.
+                manifest.forEach(t => {
+                    if (t.tab && !customTabs.includes(t.tab)) customTabs.push(t.tab);
+                });
+                saveTabState();
 
                 // Load audio elements for each trigger
                 triggerAudioElements = {};
@@ -9717,6 +9741,7 @@
                     const triggerData = {
                         word: trigger.word,
                         cooldown: trigger.cooldown,
+                        tab: trigger.tab || undefined,
                         sounds: [],
                         customName: trigger.customName || undefined
                     };
@@ -9762,9 +9787,16 @@
                     word: t.word,
                     cooldown: t.cooldown,
                     sounds: t.sounds.map(s => ({ name: `audio/${s.fileName}` })),
+                    ...(t.tab ? { tab: t.tab } : {}),
                     ...(t.customName ? { customName: t.customName } : {})
                 }));
                 zip.file('soundpack.json', JSON.stringify(manifest, null, 2));
+
+                // Which cards are favourited is part of how a board is laid
+                // out, same as the tabs above. soundpack.json has to stay a
+                // plain array for older importers, so favourites travel in
+                // their own file that those importers simply ignore.
+                zip.file('favorites.json', JSON.stringify([...favoriteTriggers], null, 2));
                 
                 // Add README with instructions
                 const readme = `TriggerWord ZIP Soundpack\n\nThis ZIP contains:\n- soundpack.json: Trigger configuration compatible with Import ZIP\n- audio/: All audio files\n\nTo import:\n1. Click \"Import ZIP Soundpack\" button\n2. Select this ZIP file\n\nExported on: ${new Date().toLocaleString()}`;
