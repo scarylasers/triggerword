@@ -131,6 +131,18 @@
         }
         .tw-tab .tab-x { margin-left: 8px; opacity: 0.55; }
         .tw-tab .tab-x:hover { opacity: 1; color: #c62828; }
+        /* The start button while nothing is listening. The app used to sit
+           there saying "Ready", which reads as already running. */
+        .control-btn.needs-press {
+            animation: needsPress 1.6s ease-in-out infinite;
+            outline: 2px solid #ffcc00;
+            outline-offset: 1px;
+        }
+        @keyframes needsPress {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(255, 204, 0, 0.7); }
+            50%      { box-shadow: 0 0 0 7px rgba(255, 204, 0, 0); }
+        }
+
         /* Brand menu (logo dropdown in the header) */
         .brand-menu-link {
             display: block;
@@ -174,7 +186,7 @@
     </div>
     
     <div class="controls">
-        <label for="audioSource" style="font-weight:600;margin-right:8px;">Audio Input Device:</label>
+        <label for="audioSource" style="font-weight:600;margin-right:8px;" title="Sets the level meter, Quick Record and Time-Shift. Chrome chooses the microphone used for speech recognition.">Mic for meter &amp; recording:</label>
         <select id="audioSource" style="margin-right:18px;"></select>
         <span id="audioDeviceMsg" style="color:#c62828;font-size:0.97em;margin-right:12px;display:none;"></span>
         <br style="margin-bottom:8px;">
@@ -190,7 +202,7 @@
         <button id="resumeBtn" disabled style="display:none;">▶️ Resume</button>
         <button id="stopBtn" disabled>Stop listening</button>
     </div>
-    <div id="status">Status: Ready</div>
+    <div id="status">Status: Not listening — press "Listen for triggers"</div>
 
     
     <!-- Hidden action buttons - accessible via keyboard shortcuts or right-click menu -->
@@ -230,7 +242,8 @@
                 </div>
             </div>
             <div class="device-controls">
-                <select id="audioSourceSticky" class="compact-select"></select>
+                <select id="audioSourceSticky" class="compact-select" title="Sets the level meter, Quick Record and Time-Shift.
+Chrome chooses the microphone used for speech recognition - see the note in Settings."></select>
                 <select id="audioOutputSticky" class="compact-select"></select>
             </div>
             <div class="volume-control">
@@ -259,7 +272,7 @@
         
         <!-- Status and Transcript Row -->
         <div class="sticky-bottom-row">
-            <div id="statusSticky" class="compact-status">Ready</div>
+            <div id="statusSticky" class="compact-status">⏸ Not listening — press ▶ to start</div>
             <div id="compactTranscript" class="compact-transcript">
                 <div class="transcript-line">Speak to see transcription...</div>
             </div>
@@ -9901,6 +9914,18 @@
             resumeBtnSticky.disabled = resumeBtn.disabled;
             resumeBtnSticky.style.display = resumeBtn.style.display;
             stopBtnSticky.disabled = stopBtn.disabled;
+            showIdlePromptIfNotListening();
+        }
+
+        // "Ready" reads like it is already running, so a board that is doing
+        // nothing looks identical to one that is working. Say plainly that it
+        // is not listening yet, and draw the eye to the button that starts it.
+        function showIdlePromptIfNotListening() {
+            const idle = !isListening && !isRecording;
+            if (startBtnSticky) startBtnSticky.classList.toggle('needs-press', idle);
+            if (!idle) return;
+            const status = document.getElementById('statusSticky');
+            if (status) status.textContent = '⏸ Not listening — press ▶ to start';
         }
         
         // Function to update compact transcript
@@ -10162,6 +10187,9 @@
         // Action Menu Button (in sticky header)
         document.getElementById('actionMenuBtn')?.addEventListener('click', toggleActionButtons);
         
+        // Say up front that nothing is listening yet.
+        setTimeout(showIdlePromptIfNotListening, 500);
+
         // Chrome always picks the microphone for transcription, so this note
         // always applies.
         const micNote = document.getElementById('micPickerNote');
@@ -10345,7 +10373,8 @@
                 }
                 
                 renderTriggerList();
-                updateStatus('Ready - Ctrl+T: Time-shift, Ctrl+R: Record/Capture, Ctrl+1: Play latest, F1-F12/Alt+1-9: Favorites');
+                updateStatus('⏸ Not listening — press ▶ to start');
+                showIdlePromptIfNotListening();
 
                 // Not awaited on purpose — backfills levelling gain for any
                 // already-loaded sound that has none yet (see
