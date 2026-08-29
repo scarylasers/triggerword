@@ -36,8 +36,13 @@ jobs:
                   "footer": {"text": "Hopzle Toolkit · hopzle.com"},
               }]
           }
+          # Strip whitespace and a UTF-8 BOM: a secret set by piping from
+          # PowerShell picks up a BOM, and urllib then rejects the URL as
+          # "unknown url type: ﻿https".
+          webhook = os.environ["WEBHOOK"].strip().lstrip("﻿")
+
           req = urllib.request.Request(
-              os.environ["WEBHOOK"],
+              webhook,
               data=json.dumps(payload).encode(),
               headers={"Content-Type": "application/json",
                        "User-Agent": "hopzle-release-bot"})
