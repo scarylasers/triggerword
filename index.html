@@ -302,10 +302,24 @@
                 </div>
             </div>
 
-            <div style="background:#fff8e1;border:2px solid #ffcc00;border-radius:8px;padding:10px 14px;margin-bottom:18px;font-size:0.92em;color:#5d4a00;">
+            <div style="background:#fff8e1;border:2px solid #ffcc00;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:0.92em;color:#5d4a00;">
                 🐰 <strong>Please use this tool responsibly.</strong> There is a fine
                 line between funny and annoying — cooldowns and restraint are what
                 keep you on the right side of it.
+            </div>
+
+            <div id="micPickerNote" style="display:none;background:#e8f6f3;border:2px solid #19bfae;border-radius:8px;padding:10px 14px;margin-bottom:18px;font-size:0.92em;color:#0b8f80;">
+                🎤 <strong>Not hearing you, with more than one microphone?</strong>
+                <strong>Chrome</strong> chooses the microphone for speech recognition —
+                the dropdown here only sets the level meter and recording, so the two
+                can disagree.
+                <br><br>
+                To set Chrome's choice: open
+                <code style="background:#d5efe9;padding:1px 5px;border-radius:4px;">http://localhost:8002</code>
+                in a <em>normal browser tab</em>, click the <strong>🎤 icon in the address
+                bar</strong>, and pick your microphone. It sticks for that address, so this
+                window uses it from then on — this window has no address bar, which is why
+                it has to be done in a tab once.
             </div>
             
             <div class="settings-section">
@@ -10164,6 +10178,15 @@
         // Action Menu Button (in sticky header)
         document.getElementById('actionMenuBtn')?.addEventListener('click', toggleActionButtons);
         
+        // The Chrome-picks-the-mic note only applies to browser recognition.
+        // With the Whisper server the dropdown really does decide, so showing
+        // it there would be actively misleading. Deferred so transcriptionMode
+        // has been settled by the capability probe.
+        setTimeout(() => {
+            const note = document.getElementById('micPickerNote');
+            if (note && window.transcriptionMode !== 'whisper') note.style.display = 'block';
+        }, 4000);
+
         // Version stamp (single source: APP_VERSION above)
         const versionLabel = document.getElementById('appVersionLabel');
         if (versionLabel) versionLabel.textContent = `v${APP_VERSION}`;

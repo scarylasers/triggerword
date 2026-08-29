@@ -192,8 +192,16 @@ browser, not the app folder. The app also tells you when a new version is out.</
   <li><strong>Device dropdowns empty?</strong> Mic permission was denied. Open
   <code>chrome://settings/content/microphone</code>, allow
   <code>http://localhost:8002</code>, restart.</li>
-  <li><strong>Not hearing you?</strong> Check the mic dropdown points at your
-  actual mic and the app says it's listening.</li>
+  <li><strong>Not hearing you — and you have more than one microphone?</strong>
+  This is the big one. <strong>Chrome picks the microphone for speech
+  recognition, not TriggerWord.</strong> The dropdown in the app sets the
+  level meter and recording; Chrome's own choice decides what gets
+  transcribed, and the two can disagree.
+  <br>To set Chrome's choice: open <code>http://localhost:8002</code> in a
+  <em>normal browser tab</em>, click the <strong>🎤 microphone icon in the
+  address bar</strong>, and pick your microphone from the dropdown there. It
+  sticks for that address, so the app window uses it from then on. The app
+  window has no address bar, which is why you have to do it in a tab once.</li>
   <li><strong>Sounds on the wrong output?</strong> Set the output device in the
   app, not just Windows.</li>
   <li>Anything else — <a href="https://discord.gg/r4z4EVnt9U"><strong>ask on the Discord</strong></a>.</li>
