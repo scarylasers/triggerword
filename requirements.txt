@@ -1,12 +1,21 @@
-numpy<2
-torch==2.2.2
-torchaudio==2.2.2
-openai-whisper==20231117
-ffmpeg-python==0.2.0
-fastapi==0.104.1
-uvicorn==0.24.0
-aiofiles==23.2.1
-pydub==0.25.1
-python-multipart==0.0.6
-python-jose[cryptography]==3.3.0
-python-dotenv==1.0.0
+# Optional - only for the "advanced install" (local Whisper transcription and
+# the WebSocket server behind global hotkeys). The quickstart and the Windows
+# installer need NONE of this: they run on the standard library alone.
+#
+# Floors, not pins. The old hard pins had drifted years out of date from what
+# actually runs, which is how a pile of stale advisories accumulated.
+
+numpy>=2.0
+torch>=2.6.0            # 2.6.0 fixes the torch.load weights_only RCE
+openai-whisper>=20250625
+fastapi>=0.115.0
+uvicorn>=0.30.6
+websockets>=10.4        # uvicorn.run(ws="websockets") in local_server.py
+
+# Windows-only, for the global hotkey router (triggerword_router_improved.py)
+keyboard>=0.13.5; sys_platform == "win32"
+pywinauto>=0.6.8; sys_platform == "win32"
+pywin32>=306; sys_platform == "win32"
+
+# Optional, for the desktop splash animation (splash.py)
+pillow>=10.0
