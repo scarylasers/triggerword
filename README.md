@@ -202,5 +202,12 @@ funnier, tips keep the toolkit growing: **[ko-fi.com/scarylasers_](https://ko-fi
 
 ## License
 
-MIT — see [LICENSE](LICENSE). The starter-pack songs are original SCARYLASERS
-tracks, included for personal soundboard use.
+**GPL-3.0** — see [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).
+
+Use it, fork it, build on it. If you distribute your version — free or paid —
+you have to publish its source under the same licence, so nobody can take
+TriggerWord closed-source. The name and the artwork stay mine; give your fork
+its own.
+
+The starter-pack songs are original SCARYLASERS tracks, included for personal
+soundboard use and not covered by the code licence.
