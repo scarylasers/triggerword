@@ -7,6 +7,25 @@ When releasing: bump `version` in `package.json` and `APP_VERSION` in
 `index.html`, add an entry below, tag `vX.Y.Z`, push the tag, publish a GitHub
 Release.
 
+## 1.1.1 — 2026-08-29
+
+Fixes found while testing 1.1.0.
+
+- **Sounds no longer play over each other.** Starting a sound now stops
+  whatever was already playing, whichever way it was started — clicking a
+  card, a favourite, a shortcut or a trigger. Previously only spoken
+  triggers choked, so two songs could run at once.
+- **Tabs and favourites survive an export.** The ZIP soundpack export
+  dropped both, so a shared pack arrived as a flat, unsorted wall.
+- **Tab assignment moved into the edit (pencil) popout**, off the card face.
+- **Picking a microphone now actually opens it** and restarts listening,
+  instead of only remembering the choice, and says so if the device can't
+  be opened.
+- **The server no longer dies on its own log output.** Run hidden with its
+  output redirected, the first emoji it logged raised an encoding error and
+  killed it — which stopped transcription in the advanced setup.
+- Starter pack is now SCARYLASERS recordings and songs throughout.
+
 ## 1.1.0 — 2026-08-28
 
 - **Windows installer** — `TriggerWord-Setup-1.1.0.exe`. Bundles everything

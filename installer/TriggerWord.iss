@@ -3,7 +3,7 @@
 ; non-technical user needs nothing installed first. Build with build.ps1.
 
 #define AppName "TriggerWord"
-#define AppVersion "1.1.0"
+#define AppVersion "1.1.1"
 #define AppPublisher "SCARYLASERS"
 #define AppURL "https://github.com/scarylasers/triggerword"
 
