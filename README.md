@@ -37,9 +37,26 @@ Use it responsibly. The people listening did not consent to an airhorn.
 
 ---
 
-## Quickstart — the easy way
+## Install it — the easy way
 
-You need **Google Chrome or Microsoft Edge**. Nothing else installs.
+Download **`TriggerWord-Setup.exe`** from the
+[latest release](https://github.com/scarylasers/triggerword/releases/latest)
+and run it. Python is bundled, so there is nothing else to install and nothing
+to unzip — you get a desktop shortcut and a normal uninstaller.
+
+> Windows will show *"Windows protected your PC"* because the installer isn't
+> code-signed (those certificates are expensive). Click **More info → Run
+> anyway**. All the source is right here if you'd rather read it first.
+
+You still need **Chrome or Edge** installed — speech recognition and per-sound
+output routing are Chromium features.
+
+Then: click **Allow** for the microphone, import the starter pack, and say
+**"lasers"**.
+
+## Run from source — the developer way
+
+This route also unlocks the advanced features (offline Whisper, global hotkeys).
 
 1. **Download this repository** — the green *Code* button → *Download ZIP* →
    unzip it somewhere you'll find again.

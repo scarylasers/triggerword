@@ -76,16 +76,31 @@
 
 <h2>Get started in four steps</h2>
 <ol>
-  <li><strong>Download</strong> the <a href="https://github.com/scarylasers/triggerword/releases/latest">latest release</a> and unzip it.</li>
-  <li>Double-click <code>start-triggerword.bat</code>.</li>
-  <li>Click <strong>Allow</strong> when it asks for your microphone. <em>Nothing works without this.</em></li>
+  <li><strong>Download the installer</strong> — <code>TriggerWord-Setup.exe</code> from the
+  <a href="https://github.com/scarylasers/triggerword/releases/latest">latest release</a>.</li>
+  <li><strong>Run it.</strong> It installs just for you (no admin needed) and makes a
+  desktop shortcut. <em>Everything is included — you don't need to install Python
+  or anything else.</em></li>
+  <li>Open TriggerWord and click <strong>Allow</strong> when it asks for your
+  microphone. <em>Nothing works without this.</em></li>
   <li>Click <strong>Listen for triggers</strong> and say <span class="say">"lasers"</span>.</li>
 </ol>
 <img class="shot" src="static/images/guide/app-light.png" alt="The TriggerWord app">
 <div class="card warn">
-  Needs <strong>Chrome or Edge</strong> and <a href="https://www.python.org/downloads/">Python</a>
-  ("Add Python to PATH" ticked). No packages, no accounts — everything stays on your machine.
+  <strong>"Windows protected your PC"?</strong> That blue box appears for any
+  installer without an expensive code-signing certificate — it is not a virus
+  warning. Click <strong>More info → Run anyway</strong>. You can always read
+  every line of the source on
+  <a href="https://github.com/scarylasers/triggerword">GitHub</a>.
 </div>
+<div class="card warn">
+  You also need <strong>Chrome or Edge</strong> installed — the speech
+  recognition and per-sound audio routing are Chromium features. No account, no
+  cloud: everything stays on your machine.
+</div>
+<p style="color:#5c7480;font-size:.92em">Prefer to run from source? Grab the
+repo, install Python, and use <code>start-triggerword.bat</code> — that route
+also unlocks the advanced features below.</p>
 <div class="card warn">
   🐰 <strong>Please use this tool responsibly.</strong> There is a fine line between
   <em>funny</em> and <em>annoying</em>, and a listening soundboard sits right on it.
@@ -138,9 +153,13 @@ browser's storage, so make a backup and keep it somewhere safe.</p>
 <p>Toggle with the 🌙 button in the header. Remembered between sessions.</p>
 
 <h2>Updating</h2>
-<p>Run <code>update-triggerword.bat</code> in the app folder — it grabs the newest
-version and restarts the app. Your sounds and settings are never touched. The app
-also tells you when a new version is out.</p>
+<p><strong>Installed with the installer?</strong> Download the new
+<code>TriggerWord-Setup.exe</code> and run it — it installs over the top.
+<em>Close TriggerWord first</em> or it will ask you to.</p>
+<p><strong>Running from source?</strong> Run <code>update-triggerword.bat</code>
+in the app folder.</p>
+<p>Either way your sounds and settings are never touched — they live in your
+browser, not the app folder. The app also tells you when a new version is out.</p>
 
 <h2>Advanced — the deep stuff</h2>
 <ul>

@@ -1450,7 +1450,7 @@
         let selectedDeviceId = null;
         let selectedOutputDeviceId = null;
         let isMicMuted = false;
-        const APP_VERSION = '1.0.0'; // keep in sync with package.json (see CHANGELOG.md)
+        const APP_VERSION = '1.1.0'; // keep in sync with package.json (see CHANGELOG.md)
 
         let masterVolume = 0.75; // Default 75%
         
@@ -10272,6 +10272,16 @@
             hotkeySocket.onclose = () => {
                 setTimeout(() => connectHotkeySocket(Math.min(retryMs * 2, 60000)), retryMs);
             };
+        })();
+
+        // Heartbeat for the installed build: launcher.py shuts the server
+        // down when these stop arriving, so closing the window closes the
+        // app. Harmless everywhere else - the 404 is caught and ignored.
+        (function heartbeat() {
+            if (location.protocol === 'file:') return;
+            const ping = () => fetch('/alive').catch(() => {});
+            ping();
+            setInterval(ping, 5000);
         })();
 
         // Handle page unload

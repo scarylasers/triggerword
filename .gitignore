@@ -16,6 +16,12 @@ venv/
 
 # Runtime logs from the hidden server/router (full mode)
 triggerword-*.log
+launcher.log
+
+# Installer build artifacts (the embedded Python runtime, staged payload and
+# compiled setup exe are all reproducible from installer/build.ps1)
+installer/build/
+installer/dist/
 
 # Editor / OS
 .idea/
