@@ -67,7 +67,7 @@ This route also unlocks the advanced features (offline Whisper, global hotkeys).
 4. **Click "Allow"** when it asks for your microphone. Nothing works without it.
 5. Import the included **`TriggerWord-Starter-Pack.zip`** (use *Import backup*
    in the 🔧 menu to also get favorites) — original SCARYLASERS sounds and
-   songs, stream-safe. Or add your own sounds one at a time.
+   songs. Or add your own sounds one at a time.
 6. Say one of your trigger words. Try **"lasers"**. Say **"quiet"** to fade
    everything out — including the full songs.
 
