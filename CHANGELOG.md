@@ -7,6 +7,35 @@ When releasing: bump `version` in `package.json` and `APP_VERSION` in
 `index.html`, add an entry below, tag `vX.Y.Z`, push the tag, publish a GitHub
 Release.
 
+## 1.1.2 — 2026-08-29
+
+Mostly about making it obvious what the app is doing.
+
+- **It now says when it isn't listening.** The status used to read "Ready",
+  which looks the same as working. It says *Not listening — press ▶ to start*,
+  and the play button pulses until you do. While running it says
+  *Transcribing*.
+- **Play, stop and the microphone button sit beside the transcript**, where
+  you look to see whether it heard you. Pause and resume are gone — start and
+  stop say the same thing with one less state.
+- **A 🎤 button opens Chrome's microphone picker.** Chrome, not TriggerWord,
+  chooses the microphone it transcribes, and the app window has no address bar
+  to reach that control from. This opens a tab where you can set it; Chrome
+  remembers it per address.
+- **The app's own microphone picker is gone.** It selected a device for
+  recording while Chrome independently selected the one being transcribed —
+  two settings that could disagree. Everything now follows Chrome.
+- **The level meter is gone.** It never actually rendered, and had it worked it
+  would have metered a different device from the one being transcribed.
+- **The header folds away** to just the logo, transport and transcript, with
+  the toggle tucked on its bottom-right edge. Tabs, titles and spacing
+  tightened; section titles are left-aligned.
+- **Long speech wraps and scrolls** instead of running off the end.
+- **Corrected the privacy claim.** The README said audio never leaves your
+  machine. It does: speech recognition is Chrome's, and unless Chrome has
+  on-device models it sends the audio to Google. Your sounds, triggers and
+  settings never leave.
+
 ## 1.1.1 — 2026-08-29
 
 Fixes found while testing 1.1.0.

@@ -81,9 +81,11 @@ hand it to a friend.
 browser remembered. Open `chrome://settings/content/microphone`, allow
 `http://localhost:8002`, and restart.
 
-**Nothing happens when you speak.** Check the microphone dropdown points at the mic you're
-actually using and that the app says it's listening. It needs a moment of clear speech, not
-one muttered syllable.
+**Nothing happens when you speak.** First check it is actually listening — the status by
+the transcript says *Not listening* until you press ▶. If it is listening and you have more
+than one microphone, Chrome may be on the wrong one: press the 🎤 button, then in the tab
+that opens press ▶ and click the microphone icon in the address bar to choose. Chrome picks
+the microphone for speech recognition, not TriggerWord.
 
 **Sounds play to the wrong device.** Set the output device in the app, not just in Windows —
 each sound is routed individually.

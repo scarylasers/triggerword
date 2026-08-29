@@ -311,7 +311,7 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
             <button id="quickRecordBtn" class="control-btn file-btn" title="Quick Record">🎙️</button>
             <button id="timeShiftBtn" class="control-btn file-btn" title="Start Time-Shift Recording">🕒</button>
             <button id="globalSettingsGear" class="control-btn file-btn" title="Global Settings">⚙️</button>
-            <button id="shutdownBtn" class="control-btn shutdown-btn" title="Shutdown TriggerWord (closes everything)">🔴</button>
+            <button id="shutdownBtn" class="control-btn shutdown-btn" title="Close TriggerWord">✕</button>
         </div>
         </div>
         
@@ -1605,7 +1605,7 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
         let selectedDeviceId = null;
         let selectedOutputDeviceId = null;
         let isMicMuted = false;
-        const APP_VERSION = '1.1.1'; // keep in sync with package.json (see CHANGELOG.md)
+        const APP_VERSION = '1.1.2'; // keep in sync with package.json (see CHANGELOG.md)
 
         let masterVolume = 0.75; // Default 75%
         

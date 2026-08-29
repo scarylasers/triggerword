@@ -743,10 +743,11 @@
         }
         
         .shutdown-btn {
-            background: #d32f2f !important;
-            padding: 6px 8px;
-            padding: 0px 0px;
-            font-size: 1.1em;
+            background: #d32f2f;
+            color: #fff;
+            font-weight: 700;
+            font-size: 0.95em;
+            line-height: 1;
         }
         .shutdown-btn:hover:not(:disabled) {
             background: #b71c1c !important;
