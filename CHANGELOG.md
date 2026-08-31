@@ -7,6 +7,24 @@ When releasing: bump `version` in `package.json` and `APP_VERSION` in
 `index.html`, add an entry below, tag `vX.Y.Z`, push the tag, publish a GitHub
 Release.
 
+## 1.2.0 — 2026-08-30
+
+Your remote works when you are looking at something else.
+
+- **A remote or stream deck now fires triggers while the window is minimised**,
+  or while you are in a game, a DAW, or anything else. Until now TriggerWord
+  only heard those buttons when its own window had focus, which rather defeated
+  the point of having a remote. It claims F13–F24 for as long as it is open, so
+  those keys reach the soundboard instead of whatever you are typing in. Nothing
+  else on your keyboard is touched.
+- **The app icon is the logo instead of the wordmark.** The tab icon — and the
+  icon Windows shows for the app window in the taskbar — used to be the full
+  TriggerWord lettering, which is an unreadable smudge at 16 pixels. It is now
+  the bunny-and-bullseye mark. The wordmark still heads the window and the guide.
+- **The window uses its full width**, and the gap above the tabs is closed up.
+- **Tighter layout**: content follows the header, and the microphone button sits
+  next to the transcript.
+
 ## 1.1.2 — 2026-08-29
 
 Mostly about making it obvious what the app is doing.

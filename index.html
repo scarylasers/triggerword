@@ -228,10 +228,10 @@
             color-scheme: dark;
         }
     </style>
-    <link rel="icon" href="/favicon.ico">
-    <link rel="icon" type="image/x-icon" href="/favicon.ico">
-    <link rel="icon" type="image/png" href="/static/favicon.ico">
-    <link rel="icon" type="image/png" href="static/images/Triggerword_logo_medium.png">
+    <!-- The mark, not the wordmark: this is the tab icon and the icon Chrome
+         gives the app window in the taskbar, where a wordmark is a smudge. -->
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" href="/static/images/triggerword_icon_512.png">
 </head>
 <body>
     <!-- The intro splash lives in splash.py: a transparent desktop window
@@ -1610,7 +1610,7 @@ Chrome chooses the microphone used for speech recognition - see the note in Sett
         let selectedDeviceId = null;
         let selectedOutputDeviceId = null;
         let isMicMuted = false;
-        const APP_VERSION = '1.1.2'; // keep in sync with package.json (see CHANGELOG.md)
+        const APP_VERSION = '1.2.0'; // keep in sync with package.json (see CHANGELOG.md)
 
         let masterVolume = 0.75; // Default 75%
         
